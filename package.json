@@ -1,0 +1,63 @@
+{
+  "name": "illumina",
+  "displayName": "Illumina",
+  "description": "A tool for visual exploration of source code",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.94.0"
+  },
+  "categories": [
+    "Visualization"
+  ],
+  "activationEvents": [],
+  "main": "./dist/main.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "illumina.activate",
+        "title": "Illumina: Activate"
+      }
+    ]
+  },
+  "scripts": {
+    "build-ext": "webpack",
+    "build-webview": "vite build",
+    "build": "npm run build-ext && npm run build-webview",
+    "watch-ext": "webpack --watch",
+    "watch-webview": "vite build --watch",
+    "watch": "concurrently \"npm run watch-ext\" \"npm run watch-webview\"",
+    "lint": "eslint src",
+    "build-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run build-tests && npm run build && npm run lint",
+    "test": "vscode-test",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "vscode:prepublish": "npm run package"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.9",
+    "@types/node": "20.x",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/vscode": "^1.95.0",
+    "@typescript-eslint/eslint-plugin": "^8.13.0",
+    "@typescript-eslint/parser": "^8.13.0",
+    "@vitejs/plugin-react": "^4.3.3",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
+    "concurrently": "^9.1.0",
+    "eslint": "^9.14.0",
+    "ts-loader": "^9.5.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "webpack": "^5.96.1",
+    "webpack-cli": "^5.1.4"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tree-sitter": "^0.21.1",
+    "tree-sitter-java": "^0.23.2"
+  }
+}
