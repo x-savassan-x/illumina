@@ -1,0 +1,22 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+      "module": "ESNext",
+      "target": "ES2023",
+      "lib": ["ES2023", "DOM"],
+      "rootDir": "src",
+      "jsx": "react-jsx",
+      "moduleResolution": "bundler",
+      "types": [
+        "react",
+        "react-dom"
+      ],
+      "paths": {
+			  "@shared/*": ["./src/shared/*"]
+		  }
+    },
+    "include": [
+      "src/webview",
+      "src/shared"
+    ]
+}

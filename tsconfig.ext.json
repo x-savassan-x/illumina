@@ -1,0 +1,24 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+      "module": "Node16",
+      "target": "ES2023",
+      "lib": ["ES2023"],
+      "rootDir": "src",
+      "types": [
+        "node",
+        "vscode",
+        "mocha"
+      ],
+      "paths": {
+        "@core/*": ["./src/core/*"],
+        "@shared/*": ["./src/shared/*"]
+      }
+    },
+    "include": [
+      "src/extension",
+      "src/core",
+      "src/shared",
+      "src/test"
+    ]
+}

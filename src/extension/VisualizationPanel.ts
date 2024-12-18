@@ -1,9 +1,6 @@
-import * as vscode from "vscode";
-import { Webview, Uri } from "vscode";
+import vscode from "vscode";
+import fs from "fs";
 
-function getUri(webview: Webview, extensionUri: Uri, pathList: string[]) {
-    return webview.asWebviewUri(Uri.joinPath(extensionUri, ...pathList));
-}
 
 export class VisualizationPanel {
     public static currentPanel: VisualizationPanel | undefined;
@@ -16,7 +13,7 @@ export class VisualizationPanel {
         this._panel.onDidDispose(() => this._dispose(), null, this._disposables);
     }
 
-    public static createOrShow(extensionUri: vscode.Uri) {
+    public static createOrShow(extensionUri: vscode.Uri): void {
         const column = vscode.window.activeTextEditor
             ? vscode.window.activeTextEditor.viewColumn
             : undefined;
@@ -27,9 +24,9 @@ export class VisualizationPanel {
         }
 
         const panel = vscode.window.createWebviewPanel(
-            'illuminaReact',
+            'illumina',
             'Illumina',
-            column || vscode.ViewColumn.One,
+            column ?? vscode.ViewColumn.One,
             {
                 enableScripts: true,
                 localResourceRoots: [extensionUri]
@@ -39,33 +36,23 @@ export class VisualizationPanel {
         VisualizationPanel.currentPanel = new VisualizationPanel(panel, extensionUri);
     }
 
-    private _getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri) {
-        const scriptUri = getUri(webview, extensionUri, ["dist", "webview", "index.js"]);
+    private _getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): string {
+        const distUri = vscode.Uri.joinPath(extensionUri, 'dist', 'webview');
+        const indexUri = vscode.Uri.joinPath(distUri, 'index.html');
 
-        return `
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8" />
-                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-                <title>Illumina</title>
-            </head>
-            <body>
-                <div id="root"></div>
-                <script type="module" src="${scriptUri}"></script>
-            </body>
-            </html>
-        `;
+        const content = fs.readFileSync(indexUri.fsPath, 'utf-8');
+
+        return content.replace(
+            /(src|href)="([^"]*)"/g,
+            (_, attr, path) => `${attr}="${webview.asWebviewUri(vscode.Uri.joinPath(distUri, path))}"`
+        );
     }
 
-    private _dispose() {
+    private _dispose(): void {
         VisualizationPanel.currentPanel = undefined;
         this._panel.dispose();
         while (this._disposables.length) {
-            const disposable = this._disposables.pop();
-            if (disposable) {
-                disposable.dispose();
-            }
+            this._disposables.pop()?.dispose();
         }
     }
 }
