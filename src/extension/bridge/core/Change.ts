@@ -4,7 +4,6 @@ import { Edit } from "tree-sitter";
 type Deletion = {
     operation: 'delete';
     path: string;
-    isFile: boolean;
 }
 
 

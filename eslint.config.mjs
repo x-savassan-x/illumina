@@ -45,6 +45,12 @@ export default [{
                 "leadingUnderscore": "require"
             },
             {
+                "selector": "memberLike",
+                "modifiers": ["protected"],
+                "format": ["camelCase"],
+                "leadingUnderscore": "require"
+            },
+            {
                 "selector": "enumMember",
                 "format": ["PascalCase"]
             },

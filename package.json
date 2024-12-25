@@ -21,6 +21,7 @@
         "illumina.sourceDirectory": {
           "scope": "resource",
           "type": "string",
+          "pattern": "^[^/\\\\][^:*?\"<>|]*$",
           "default": "",
           "description": "Relative path from workspace root to the source code directory. Leave empty to use workspace root."
         },
@@ -31,12 +32,38 @@
             ".java",
             ".cpp"
           ],
-          "enumItemLabels": [
-            "Java",
-            "C++"
-          ],
           "default": ".java",
           "description": "Supported programming language for analysis in current workspace."
+        },
+        "illumina.delayMode": {
+          "scope": "resource",
+          "type": "string",
+          "enum": [
+            "debounce",
+            "throttle"
+          ],
+          "enumDescriptions": [
+            "Wait until changes stop before updating",
+            "Update at fixed intervals while changes occur"
+          ],
+          "default": "debounce",
+          "description": "How to handle rapid file changes during analysis."
+        },
+        "illumina.delayTime": {
+          "scope": "resource",
+          "type": "number",
+          "minimum": 500,
+          "maximum": 5000,
+          "default": 1000,
+          "description": "Delay time in milliseconds for handling file changes."
+        },
+        "illumina.maxCacheSize": {
+          "scope": "resource",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 5,
+          "description": "Maximum number of parsed files to keep in memory."
         }
       }
     },
@@ -60,7 +87,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
-    "@types/react": "^18.3.17",
+    "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@types/vscode": "^1.96.0",
     "@typescript-eslint/eslint-plugin": "^8.18.1",
@@ -78,6 +105,7 @@
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
+    "lru-cache": "^11.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tree-sitter": "^0.21.1",
