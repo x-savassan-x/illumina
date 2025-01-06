@@ -1,16 +1,16 @@
 import { LogOutputChannel, window } from "vscode";
 import { existsSync, mkdirSync, WriteStream, createWriteStream } from "fs";
 import { join } from "path";
-import { LogLevel } from "@shared/types/logging";
+import { LogLevel, LogData } from "@shared/types/logging";
 
 
-export interface IWriter {
+interface IWriter {
     write(level: LogLevel, message: string): void;
     dispose(): void;
 }
 
 
-export class ChannelWriter implements IWriter {
+class ChannelWriter implements IWriter {
     private readonly _channel: LogOutputChannel;
 
     public constructor(name: string) {
@@ -32,7 +32,7 @@ export class ChannelWriter implements IWriter {
 }
 
 
-export class FileWriter implements IWriter {
+class FileWriter implements IWriter {
     private readonly _writer: WriteStream;
 
     public constructor(logDir: string) {
@@ -71,5 +71,51 @@ export class FileWriter implements IWriter {
         const sec = String(date.getSeconds()).padStart(2, '0');
         const milSec = String(date.getMilliseconds()).padStart(3, '0');
         return `${hour}:${min}:${sec}.${milSec}`;
+    }
+}
+
+
+export class Logger {
+    private static readonly _writers: IWriter[] = [];
+
+    private constructor() { }
+
+    public static init(): void {
+        this._writers.push(new ChannelWriter('Illumina'));
+
+        if (process.env.NODE_ENV === 'development') {
+            const logDir = join(process.env.ROOT!, 'logs');
+            this._writers.push(new FileWriter(logDir));
+        }
+    }
+
+    public static dispose(): void {
+        this._writers.forEach(w => w.dispose());
+    }
+
+    public static debug(message: string, source?: string, data?: LogData): void {
+        this._log(LogLevel.Debug, message, source, data);
+    }
+
+    public static info(message: string, source?: string, data?: LogData): void {
+        this._log(LogLevel.Info, message, source, data);
+    }
+
+    public static warn(message: string, source?: string, data?: LogData): void {
+        this._log(LogLevel.Warn, message, source, data);
+    }
+
+    public static error(message: string, source?: string, data?: LogData): void {
+        this._log(LogLevel.Error, message, source, data);
+    }
+
+    private static _log(level: LogLevel, message: string, source?: string, data?: LogData): void {
+        const src = source ? `[${source}] ` : '';
+        const metadata = data ? `\n${JSON.stringify(data, null, 2)}` : '';
+        const payload = `${src}${message}${metadata}`;
+
+        for (const writer of this._writers) {
+            writer.write(level, payload);
+        }
     }
 }

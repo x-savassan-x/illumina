@@ -30,10 +30,22 @@
           "type": "string",
           "enum": [
             ".java",
-            ".cpp"
+            ".kt"
+          ],
+          "enumItemLabels": [
+            "Java",
+            "Kotlin"
           ],
           "default": ".java",
           "description": "Supported programming language for analysis in current workspace."
+        },
+        "illumina.maxCacheSize": {
+          "scope": "resource",
+          "type": "number",
+          "minimum": 5,
+          "maximum": 100,
+          "default": 5,
+          "description": "Maximum number of parsed files to keep in memory."
         },
         "illumina.delayMode": {
           "scope": "resource",
@@ -53,17 +65,9 @@
           "scope": "resource",
           "type": "number",
           "minimum": 500,
-          "maximum": 5000,
-          "default": 1000,
+          "maximum": 3000,
+          "default": 500,
           "description": "Delay time in milliseconds for handling file changes."
-        },
-        "illumina.maxCacheSize": {
-          "scope": "resource",
-          "type": "number",
-          "minimum": 1,
-          "maximum": 100,
-          "default": 5,
-          "description": "Maximum number of parsed files to keep in memory."
         }
       }
     },
@@ -90,13 +94,14 @@
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@types/vscode": "^1.96.0",
-    "@typescript-eslint/eslint-plugin": "^8.18.1",
-    "@typescript-eslint/parser": "^8.18.1",
+    "@typescript-eslint/eslint-plugin": "^8.19.0",
+    "@typescript-eslint/parser": "^8.19.0",
     "@vitejs/plugin-react": "^4.3.4",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
-    "concurrently": "^9.1.0",
+    "concurrently": "^9.1.2",
     "eslint": "^9.17.0",
+    "node-loader": "^2.1.0",
     "ts-loader": "^9.5.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.2",
@@ -109,6 +114,6 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tree-sitter": "^0.21.1",
-    "tree-sitter-java": "^0.23.4"
+    "tree-sitter-java": "^0.23.5"
   }
 }

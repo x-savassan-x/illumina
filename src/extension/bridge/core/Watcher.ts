@@ -8,41 +8,35 @@ import {
     FileRenameEvent
 } from "vscode";
 import { extname, relative, sep, basename, dirname } from "path";
-import { Change } from "./Change";
-import { getConfig } from "../../utils";
-import { Logger } from "../../logger";
-
-
-const logger = Logger.instance;
+import { Operation, Change } from "./Change";
+import { ConfigSection, handleConfigChanges, getConfigValue } from "../../config";
 
 
 export class Watcher {
     private readonly _workspaceFolder: WorkspaceFolder = workspace.workspaceFolders![0];
-    private readonly _disposables: Disposable[] = [];
+    private readonly _disposables: Disposable[];
     private _srcDir: string;
     private _srcLang: string;
 
     public constructor(
         private readonly _listener: (change: Change) => void
     ) {
-        this._srcDir = getConfig<string>('sourceDirectory');
-        this._srcLang = getConfig<string>('sourceLanguage');
+        this._srcDir = getConfigValue<string>(ConfigSection.SourceDirectory);
+        this._srcLang = getConfigValue<string>(ConfigSection.SourceLanguage);
 
-        this._disposables.push(
+        this._disposables = [
             workspace.onDidDeleteFiles(e => this._handleDeletion(e)),
             workspace.onDidChangeTextDocument(e => this._handleModification(e)),
             workspace.onDidRenameFiles(e => this._handleRenaming(e)),
-            workspace.onDidChangeConfiguration(e => {
-                if (e.affectsConfiguration('illumina.sourceDirectory', this._workspaceFolder)) {
-                    this._srcDir = getConfig<string>('sourceDirectory');
-                    logger.debug(`Source directory changed to ${this._srcDir || 'workspace root'}`, 'Watcher');
-                }
-                else if (e.affectsConfiguration('illumina.sourceLanguage', this._workspaceFolder)) {
-                    this._srcLang = getConfig<string>('sourceLanguage');
-                    logger.debug(`Source language changed to ${this._srcLang}`, 'Watcher');
-                }
-            })
-        );
+            workspace.onDidChangeConfiguration(e => handleConfigChanges(e, [
+                [ConfigSection.SourceDirectory, (): void => {
+                    this._srcDir = getConfigValue<string>(ConfigSection.SourceDirectory);
+                }],
+                [ConfigSection.SourceLanguage, (): void => {
+                    this._srcLang = getConfigValue<string>(ConfigSection.SourceLanguage);
+                }]
+            ]))
+        ];
     }
 
     public dispose(): void {
@@ -55,14 +49,10 @@ export class Watcher {
                 continue;
             }
 
-            const change: Change = {
-                operation: 'delete',
+            this._listener({
+                operation: Operation.Delete,
                 path: this._getRelativePath(uri)
-            };
-
-            logger.debug(`Deleted file/folder: ${change.path}`, 'Watcher');
-
-            this._listener(change);
+            });
         }
     }
 
@@ -78,8 +68,8 @@ export class Watcher {
             return;
         }
 
-        const change: Change = {
-            operation: 'modify',
+        this._listener({
+            operation: Operation.Modify,
             path: this._getRelativePath(uri),
             content: document.getText(),
             edits: event.contentChanges.map(change => {
@@ -112,11 +102,7 @@ export class Watcher {
                     startPosition, oldEndPosition, newEndPosition
                 };
             })
-        };
-
-        logger.debug(`Modified file: ${change.path}`, 'Watcher', { edits: change.edits });
-
-        this._listener(change);
+        });
     }
 
     private _handleRenaming(event: FileRenameEvent): void {
@@ -125,38 +111,31 @@ export class Watcher {
                 continue;
             }
 
-            if (!this._isInSourceScope(newUri)) {
+            if (!this._isInSourceScope(newUri)) { // Moved out of source directory
                 this._listener({
-                    operation: 'delete',
+                    operation: Operation.Delete,
                     path: this._getRelativePath(oldUri)
                 });
                 continue;
             }
 
-            let change: Change;
-
             const oldName = basename(oldUri.fsPath);
             const newName = basename(newUri.fsPath);
 
             if (oldName !== newName) {
-                change = {
-                    operation: 'rename',
-                    parentPath: dirname(this._getRelativePath(oldUri)),
-                    oldName,
+                this._listener({
+                    operation: Operation.Rename,
+                    path: this._getRelativePath(oldUri),
                     newName
-                };
-                logger.debug(`Renamed file: ${change.oldName} -> ${change.newName}`, 'Watcher', { parentPath: change.parentPath });
+                });
             }
             else {
-                change = {
-                    operation: 'move',
-                    from: this._getRelativePath(oldUri),
-                    to: this._getRelativePath(newUri)
-                };
-                logger.debug(`Moved file: ${change.from} -> ${change.to}`, 'Watcher');
+                this._listener({
+                    operation: Operation.Move,
+                    path: this._getRelativePath(oldUri),
+                    newDir: dirname(this._getRelativePath(newUri))
+                });
             }
-
-            this._listener(change);
         }
     }
 

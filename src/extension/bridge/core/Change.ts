@@ -1,14 +1,17 @@
 import { Edit } from "tree-sitter";
 
 
+export enum Operation { Delete, Modify, Rename, Move }
+
+
 type Deletion = {
-    operation: 'delete';
+    operation: Operation.Delete;
     path: string;
 }
 
 
 type Modification = {
-    operation: 'modify';
+    operation: Operation.Modify;
     path: string;
     content: string;
     edits: Edit[];
@@ -16,17 +19,16 @@ type Modification = {
 
 
 type Renaming = {
-    operation: 'rename';
-    parentPath: string;
-    oldName: string;
+    operation: Operation.Rename;
+    path: string;
     newName: string;
 }
 
 
 type Moving = {
-    operation: 'move';
-    from: string;
-    to: string;
+    operation: Operation.Move;
+    path: string;
+    newDir: string;
 }
 
 
