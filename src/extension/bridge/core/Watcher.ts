@@ -1,27 +1,27 @@
 import {
     workspace,
     Disposable,
-    WorkspaceFolder,
     Uri,
     FileDeleteEvent,
     TextDocumentChangeEvent,
     FileRenameEvent
 } from "vscode";
-import { extname, relative, sep, basename, dirname } from "path";
+import { extname, relative, basename, dirname } from "path";
 import { Operation, Change } from "./Change";
-import { ConfigSection, handleConfigChanges, getConfigValue } from "../../config";
+import { ConfigSection, handleConfigChanges, getConfigValue } from "@ext/config";
 
 
 export class Watcher {
-    private readonly _workspaceFolder: WorkspaceFolder = workspace.workspaceFolders![0];
+    private static _instance: Watcher | undefined;
     private readonly _disposables: Disposable[];
-    private _srcDir: string;
+    private _srcRoot: string;
     private _srcLang: string;
 
-    public constructor(
+    private constructor(
+        private readonly _workspaceRoot: string,
         private readonly _listener: (change: Change) => void
     ) {
-        this._srcDir = getConfigValue<string>(ConfigSection.SourceDirectory);
+        this._srcRoot = `${this._workspaceRoot}/${getConfigValue<string>(ConfigSection.SourceDirectory)}`;
         this._srcLang = getConfigValue<string>(ConfigSection.SourceLanguage);
 
         this._disposables = [
@@ -30,7 +30,7 @@ export class Watcher {
             workspace.onDidRenameFiles(e => this._handleRenaming(e)),
             workspace.onDidChangeConfiguration(e => handleConfigChanges(e, [
                 [ConfigSection.SourceDirectory, (): void => {
-                    this._srcDir = getConfigValue<string>(ConfigSection.SourceDirectory);
+                    this._srcRoot = `${this._workspaceRoot}/${getConfigValue<string>(ConfigSection.SourceDirectory)}`;
                 }],
                 [ConfigSection.SourceLanguage, (): void => {
                     this._srcLang = getConfigValue<string>(ConfigSection.SourceLanguage);
@@ -39,20 +39,30 @@ export class Watcher {
         ];
     }
 
+    public static getInstance(
+        workspaceRoot: string,
+        listener: (change: Change) => void
+    ): Watcher {
+        if (!Watcher._instance) {
+            Watcher._instance = new Watcher(workspaceRoot, listener);
+        }
+        return Watcher._instance;
+    }
+
     public dispose(): void {
         this._disposables.forEach(d => d.dispose());
+        Watcher._instance = undefined;
     }
 
     private _handleDeletion(event: FileDeleteEvent): void {
         for (const uri of event.files) {
-            if (!this._isInSourceScope(uri)) {
-                continue;
+            const [inScope, path] = this._isInSourceScope(uri);
+            if (inScope) {
+                this._listener({
+                    operation: Operation.Delete,
+                    path
+                });
             }
-
-            this._listener({
-                operation: Operation.Delete,
-                path: this._getRelativePath(uri)
-            });
         }
     }
 
@@ -63,103 +73,103 @@ export class Watcher {
 
         const document = event.document;
         const uri = document.uri;
+        const [inScope, path] = this._isInSourceScope(uri);
 
-        if (!this._isInSourceScope(uri)) {
-            return;
-        }
-
-        this._listener({
-            operation: Operation.Modify,
-            path: this._getRelativePath(uri),
-            content: document.getText(),
-            edits: event.contentChanges.map(change => {
-                const startIndex = change.rangeOffset;
-                const oldEndIndex = startIndex + change.rangeLength;
-                const newEndIndex = startIndex + change.text.length;
-                const startPosition = {
-                    row: change.range.start.line,
-                    column: change.range.start.character
-                };
-                const oldEndPosition = {
-                    row: change.range.end.line,
-                    column: change.range.end.character
-                };
-
-                let { row, column } = startPosition;
-                if (change.text) {
-                    const lines = change.text.split('\n');
-                    if (lines.length > 1) {
-                        row += lines.length - 1;
-                        column = lines.at(-1)!.length;
-                    } else {
-                        column += lines[0].length;
+        if (inScope) {
+            this._listener({
+                operation: Operation.Modify,
+                path,
+                content: document.getText(),
+                edits: event.contentChanges.map(change => {
+                    const startIndex = change.rangeOffset;
+                    const oldEndIndex = startIndex + change.rangeLength;
+                    const newEndIndex = startIndex + change.text.length;
+                    const startPosition = {
+                        row: change.range.start.line,
+                        column: change.range.start.character
+                    };
+                    const oldEndPosition = {
+                        row: change.range.end.line,
+                        column: change.range.end.character
+                    };
+    
+                    let { row, column } = startPosition;
+                    if (change.text) {
+                        const lines = change.text.split('\n');
+                        if (lines.length > 1) {
+                            row += lines.length - 1;
+                            column = lines.at(-1)!.length;
+                        } else {
+                            column += lines[0].length;
+                        }
                     }
-                }
-                const newEndPosition = { row, column };
-
-                return {
-                    startIndex, oldEndIndex, newEndIndex,
-                    startPosition, oldEndPosition, newEndPosition
-                };
-            })
-        });
+                    const newEndPosition = { row, column };
+    
+                    return {
+                        startIndex, oldEndIndex, newEndIndex,
+                        startPosition, oldEndPosition, newEndPosition
+                    };
+                })
+            });
+        }
     }
 
     private _handleRenaming(event: FileRenameEvent): void {
         for (const { oldUri, newUri } of event.files) {
-            if (!this._isInSourceScope(oldUri)) {
+            const [inOldScope, oldPath] = this._isInSourceScope(oldUri);
+            if (!inOldScope) {
                 continue;
             }
 
-            if (!this._isInSourceScope(newUri)) { // Moved out of source directory
+            const [inNewScope, newPath] = this._isInSourceScope(newUri);
+            if (!inNewScope) { // Moved out of source directory
                 this._listener({
                     operation: Operation.Delete,
-                    path: this._getRelativePath(oldUri)
+                    path: oldPath
                 });
                 continue;
             }
 
-            const oldName = basename(oldUri.fsPath);
-            const newName = basename(newUri.fsPath);
+            const oldName = basename(oldPath);
+            const newName = basename(newPath);
 
-            if (oldName !== newName) {
+            if (oldName !== newName) { // src/foo -> src/bar
                 this._listener({
                     operation: Operation.Rename,
-                    path: this._getRelativePath(oldUri),
+                    path: oldPath,
                     newName
                 });
             }
-            else {
+            else { // com/foo -> net/foo
                 this._listener({
                     operation: Operation.Move,
-                    path: this._getRelativePath(oldUri),
-                    newDir: dirname(this._getRelativePath(newUri))
+                    path: oldPath,
+                    newDir: dirname(newPath)
                 });
             }
         }
     }
 
-    private _isInSourceScope(uri: Uri): boolean {
+    private _isInSourceScope(uri: Uri): [boolean, string] {
         if (uri.scheme !== 'file') {
-            return false;
+            return [false, ''];
         }
 
-        const relPath = this._getRelativePath(uri);
-        if (relPath.startsWith('..') // outside workspace
-            || (this._srcDir && relPath.split(sep)[0] !== this._srcDir) // outside source directory
-        ) {
-            return false;
+        const relPath = this._getRelPath(uri);
+        if (relPath.startsWith('..')) { // outside source directory
+            return [false, ''];
         }
 
-        const ext = extname(uri.fsPath);
+        const ext = extname(uri.path);
         if (ext && ext !== this._srcLang) { // is file but not source file
-            return false;
+            return [false, ''];
         }
 
-        return true;
+        return [true, relPath];
     }
 
-    private _getRelativePath(uri: Uri): string {
-        return relative(this._workspaceFolder.uri.fsPath, uri.fsPath);
+    // path relative to source directory
+    private _getRelPath(uri: Uri): string {
+        return relative(this._srcRoot, uri.path);
     }
 }
