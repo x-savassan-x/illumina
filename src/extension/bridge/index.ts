@@ -1,2 +1,2 @@
 export { Watcher } from './core/Watcher';
-export { TreeManager } from './core/TreeManager';
+export { CacheManager } from './core/CacheManager';

@@ -17,7 +17,6 @@ export default [{
     },
     rules: {
         semi: "error",
-        curly: "warn",
         eqeqeq: "error",
         "no-throw-literal": "warn",
 

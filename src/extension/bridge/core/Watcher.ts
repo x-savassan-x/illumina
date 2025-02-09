@@ -29,10 +29,10 @@ export class Watcher {
             workspace.onDidChangeTextDocument(e => this._handleModification(e)),
             workspace.onDidRenameFiles(e => this._handleRenaming(e)),
             workspace.onDidChangeConfiguration(e => handleConfigChanges(e, [
-                [ConfigSection.SourceDirectory, (): void => {
+                [[ConfigSection.SourceDirectory], (): void => {
                     this._srcRoot = `${this._workspaceRoot}/${getConfigValue<string>(ConfigSection.SourceDirectory)}`;
                 }],
-                [ConfigSection.SourceLanguage, (): void => {
+                [[ConfigSection.SourceLanguage], (): void => {
                     this._srcLang = getConfigValue<string>(ConfigSection.SourceLanguage);
                 }]
             ]))
@@ -43,9 +43,7 @@ export class Watcher {
         workspaceRoot: string,
         listener: (change: Change) => void
     ): Watcher {
-        if (!Watcher._instance) {
-            Watcher._instance = new Watcher(workspaceRoot, listener);
-        }
+        Watcher._instance ??= new Watcher(workspaceRoot, listener);
         return Watcher._instance;
     }
 
@@ -56,72 +54,67 @@ export class Watcher {
 
     private _handleDeletion(event: FileDeleteEvent): void {
         for (const uri of event.files) {
-            const [inScope, path] = this._isInSourceScope(uri);
-            if (inScope) {
-                this._listener({
-                    operation: Operation.Delete,
-                    path
-                });
-            }
-        }
-    }
+            const [inScope, path] = this._checkScope(uri);
+            if (!inScope) return;
 
-    private _handleModification(event: TextDocumentChangeEvent): void {
-        if (!event.contentChanges.length) {
-            return;
-        }
-
-        const document = event.document;
-        const uri = document.uri;
-        const [inScope, path] = this._isInSourceScope(uri);
-
-        if (inScope) {
             this._listener({
-                operation: Operation.Modify,
-                path,
-                content: document.getText(),
-                edits: event.contentChanges.map(change => {
-                    const startIndex = change.rangeOffset;
-                    const oldEndIndex = startIndex + change.rangeLength;
-                    const newEndIndex = startIndex + change.text.length;
-                    const startPosition = {
-                        row: change.range.start.line,
-                        column: change.range.start.character
-                    };
-                    const oldEndPosition = {
-                        row: change.range.end.line,
-                        column: change.range.end.character
-                    };
-    
-                    let { row, column } = startPosition;
-                    if (change.text) {
-                        const lines = change.text.split('\n');
-                        if (lines.length > 1) {
-                            row += lines.length - 1;
-                            column = lines.at(-1)!.length;
-                        } else {
-                            column += lines[0].length;
-                        }
-                    }
-                    const newEndPosition = { row, column };
-    
-                    return {
-                        startIndex, oldEndIndex, newEndIndex,
-                        startPosition, oldEndPosition, newEndPosition
-                    };
-                })
+                operation: Operation.Delete,
+                path
             });
         }
     }
 
+    private _handleModification(event: TextDocumentChangeEvent): void {
+        if (!event.contentChanges.length) return;
+
+        const doc = event.document;
+        const [inScope, path] = this._checkScope(doc.uri);
+
+        if (!inScope) return;
+
+        this._listener({
+            operation: Operation.Modify,
+            path,
+            content: doc.getText(),
+            edits: event.contentChanges.map(change => {
+                const startIndex = change.rangeOffset;
+                const oldEndIndex = startIndex + change.rangeLength;
+                const newEndIndex = startIndex + change.text.length;
+                const startPosition = {
+                    row: change.range.start.line,
+                    column: change.range.start.character
+                };
+                const oldEndPosition = {
+                    row: change.range.end.line,
+                    column: change.range.end.character
+                };
+
+                let { row, column } = startPosition;
+                if (change.text) {
+                    const lines = change.text.split('\n');
+                    if (lines.length > 1) {
+                        row += lines.length - 1;
+                        column = lines.at(-1)!.length;
+                    } else {
+                        column += lines[0].length;
+                    }
+                }
+                const newEndPosition = { row, column };
+
+                return {
+                    startIndex, oldEndIndex, newEndIndex,
+                    startPosition, oldEndPosition, newEndPosition
+                };
+            })
+        });
+    }
+
     private _handleRenaming(event: FileRenameEvent): void {
         for (const { oldUri, newUri } of event.files) {
-            const [inOldScope, oldPath] = this._isInSourceScope(oldUri);
-            if (!inOldScope) {
-                continue;
-            }
+            const [inOldScope, oldPath] = this._checkScope(oldUri);
+            if (!inOldScope) continue;
 
-            const [inNewScope, newPath] = this._isInSourceScope(newUri);
+            const [inNewScope, newPath] = this._checkScope(newUri);
             if (!inNewScope) { // Moved out of source directory
                 this._listener({
                     operation: Operation.Delete,
@@ -150,20 +143,17 @@ export class Watcher {
         }
     }
 
-    private _isInSourceScope(uri: Uri): [boolean, string] {
-        if (uri.scheme !== 'file') {
+    private _checkScope(uri: Uri): [boolean, string] {
+        if (uri.scheme !== 'file')
             return [false, ''];
-        }
 
         const relPath = this._getRelPath(uri);
-        if (relPath.startsWith('..')) { // outside source directory
+        if (relPath.startsWith('..')) // outside source directory
             return [false, ''];
-        }
 
         const ext = extname(uri.path);
-        if (ext && ext !== this._srcLang) { // is file but not source file
+        if (ext && ext !== this._srcLang) // is file but not source file
             return [false, ''];
-        }
 
         return [true, relPath];
     }

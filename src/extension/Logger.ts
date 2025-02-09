@@ -1,7 +1,7 @@
 import { LogOutputChannel, window } from "vscode";
 import { existsSync, mkdirSync, WriteStream, createWriteStream } from "fs";
 import { join } from "path";
-import { LogLevel, LogData } from "@shared/types/logging";
+import { LogLevel, LogData } from "@shared/types/log";
 
 
 interface IWriter {
@@ -39,9 +39,8 @@ class FileWriter implements IWriter {
         const fileName = this._getLogFileName();
         const filePath = join(logDir, fileName);
 
-        if (!existsSync(logDir)) {
+        if (!existsSync(logDir))
             mkdirSync(logDir, { recursive: true });
-        }
 
         this._writer = createWriteStream(filePath, { flags: 'a' });
     }
@@ -114,8 +113,7 @@ export class Logger {
         const metadata = data ? `\n${JSON.stringify(data, null, 2)}` : '';
         const payload = `${src}${message}${metadata}`;
 
-        for (const writer of this._writers) {
+        for (const writer of this._writers)
             writer.write(level, payload);
-        }
     }
 }

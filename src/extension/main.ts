@@ -1,50 +1,46 @@
-import { workspace, ExtensionContext, WorkspaceFolder } from 'vscode';
+import { workspace, ExtensionContext, Disposable } from 'vscode';
+import { Watcher, CacheManager } from './bridge';
 import { Logger } from './Logger';
-import { Watcher, TreeManager } from './bridge';
 
 
 export function activate(context: ExtensionContext): void {
     Logger.init();
 
-    let treeManager = getTreeManager(workspace.workspaceFolders!);
-    let watcher = getWatcher(treeManager);
+    let system = initSystem();
 
     context.subscriptions.push(
         workspace.onDidChangeWorkspaceFolders(_ => {
-            watcher?.dispose();
-            treeManager?.dispose();
-            treeManager = getTreeManager(workspace.workspaceFolders!);
-            watcher = getWatcher(treeManager);
+            Logger.info('Workspace changed');
+            system?.dispose();
+            system = initSystem();
         }),
-        { dispose: () => {
-            watcher?.dispose();
-            treeManager?.dispose();
-        }},
+        { dispose: () => system?.dispose() },
         Logger
     );
 
-    Logger.info('Extension activated', 'Extension');
+    Logger.info('Extension activated');
 }
 
 
-function getWatcher(treeManager?: TreeManager): Watcher | undefined {
-    if (!treeManager) {
+function initSystem(): Disposable | undefined {
+    const folders = workspace.workspaceFolders;
+
+    if (!folders || folders.length > 1) return;
+
+    try {
+        const cacheManager = CacheManager.getInstance();
+        Logger.info('CacheManager initialized');
+
+        const watcher = Watcher.getInstance(
+            folders[0].uri.path,
+            change => cacheManager.handleChange(change)
+        );
+        Logger.info('Watcher initialized');
+
+        return Disposable.from(watcher, cacheManager);
+    }
+    catch (error) {
+        Logger.error(error instanceof Error ? error.message : String(error));
         return;
     }
-
-    Logger.info('Watcher initialized', 'Extension');
-
-    return new Watcher(change => treeManager.handleChange(change));
-}
-
-
-function getTreeManager(folders: readonly WorkspaceFolder[]): TreeManager | undefined {
-    if (folders.length > 1) {
-        Logger.warn('Multi-root workspaces are not supported', 'Extension');
-        return;
-    }
-
-    Logger.info('Tree manager initialized', 'Extension');
-
-    return new TreeManager();
 }
