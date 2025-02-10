@@ -9,7 +9,6 @@ import {
     FunctionData,
     VariableData
 } from "@core/index";
-import { Logger } from '@ext/Logger';
 
 
 export class JavaAnalyzer extends Analyzer {
@@ -112,7 +111,8 @@ export class JavaAnalyzer extends Analyzer {
 
             const modifiers = captures
                 .find(c => c.name === 'type_modifiers')?.node.text
-                .split(' ');
+                .split(' ')
+                .filter(m => m && !m.startsWith('@'));
 
             const superTypes = [];
             const superclass = captures.find(c => c.name === 'superclass')?.node;
@@ -135,8 +135,6 @@ export class JavaAnalyzer extends Analyzer {
                 superTypes,
                 ...this._processTypeDetail(bodyNode)
             ));
-
-            Logger.debug(`Found type:\n${types.at(-1)!}`);
         }
 
         return types;
@@ -150,16 +148,15 @@ export class JavaAnalyzer extends Analyzer {
         const methods = new Map<string, FunctionData>();
 
         for (const { pattern, captures } of this._typeBodyQuery.matches(body)) {
-            Logger.debug('Captured data', undefined, { captures });
             switch (pattern) {
                 case 0: {
                     const name = captures.find(c => c.name === 'field_name')!.node.text;
                     const type = captures.find(c => c.name === 'field_type')!.node.text;
                     const modifiers = captures
                         .find(c => c.name === 'field_modifiers')?.node.text
-                        .split(' ');
+                        .split(' ')
+                        .filter(m => m && !m.startsWith('@'));
                     fields.set(name, new VariableData(name, type, modifiers));
-                    Logger.debug(`Found field:\n${fields.get(name)!}`);
                     break;
                 }
                 case 1: {
@@ -167,7 +164,8 @@ export class JavaAnalyzer extends Analyzer {
                     const returnType = captures.find(c => c.name === 'return_type')!.node.text;
                     const modifiers = captures
                         .find(c => c.name === 'method_modifiers')?.node.text
-                        .split(' ');
+                        .split(' ')
+                        .filter(m => m && !m.startsWith('@'));
                     const parameters = new Map<string, string>();
                     const paramList = captures.find(c => c.name === 'param_list')!.node;
                     for (const param of paramList.children) {
@@ -178,7 +176,6 @@ export class JavaAnalyzer extends Analyzer {
                         }
                     }
                     methods.set(name, new FunctionData(name, returnType, parameters, modifiers));
-                    Logger.debug(`Found method:\n${methods.get(name)!}`);
                     break;
                 }
                 default: continue;
