@@ -1,33 +1,35 @@
-import { workspace, Disposable } from "vscode";
+import { workspace, Disposable, Uri } from "vscode";
 import { sep } from "path";
 import { LRUCache } from "lru-cache";
 import { Tree, Edit } from "tree-sitter";
 import { Operation, Change } from "./Change";
 import { Debouncer } from "./Debouncer";
+import { StaticVizEngine } from "./StaticVizEngine";
 import { CacheNode, FolderNode, FileNode, Analyzer, getAnalyzer } from "@core/index";
 import { ConfigSection, getConfigValue, handleConfigChanges } from "@ext/config";
 import { Logger } from "@ext/Logger";
 
 
 export class CacheManager {
+    public root: FolderNode;
+    public static readonly isActive = (): boolean => !!this._instance;
     private static _instance: CacheManager | undefined;
-    private readonly _root: FolderNode;
-    private readonly _debouncer: Debouncer;
-    private readonly _configChangeHandler: Disposable;
+    private readonly _debouncer = new Debouncer();
     private readonly _processingNodes = new Map<FileNode, Promise<void>>();
+    private readonly _configChangeHandler: Disposable;
+    private readonly _vizEngine = StaticVizEngine.getInstance();
     private _cache: LRUCache<FileNode, Tree>;
     private _pendingChanges: Change[] = [];
     private _currentChanges: Change[] = [];
     private _analyzer: Analyzer;
 
     private constructor() {
-        this._root = new FolderNode();
+        this.root = new FolderNode(getConfigValue<string>(ConfigSection.SourceDirectory));
         this._cache = this._getNewCache();
         this._analyzer = getAnalyzer(getConfigValue<string>(ConfigSection.SourceLanguage));
-        this._debouncer = new Debouncer();
         this._configChangeHandler = workspace.onDidChangeConfiguration(e => handleConfigChanges(e, [
             [[ConfigSection.SourceDirectory, ConfigSection.SourceLanguage], (): void => {
-                this._root.children.clear();
+                this.root = new FolderNode(getConfigValue<string>(ConfigSection.SourceDirectory));
                 this._cache.clear();
             }],
             [[ConfigSection.SourceLanguage], (): void => {
@@ -46,12 +48,8 @@ export class CacheManager {
         return this._instance;
     }
 
-    public get root(): FolderNode {
-        return this._root;
-    }
-
     public handleChange(change: Change): void {
-        if (!this._tryMerge(change))
+        if (!this._tryMergeModification(change))
             this._pendingChanges.push(change);
         this._debouncer.schedule(() => this._processChanges());
     }
@@ -62,7 +60,25 @@ export class CacheManager {
         CacheManager._instance = undefined;
     }
 
-    private _tryMerge(newChange: Change): boolean {
+    public async ensureNode(data: [string, Uri]): Promise<void> {
+        const [path, uri] = data;
+        const node = this._findNode(path) as FileNode ?? this._createFileNode(path);
+        if (node.updated) return;
+
+        node.updated = true;
+        const bytes = await workspace.fs.readFile(uri);
+        const content = new TextDecoder().decode(bytes);
+        const tree = this._analyzer.getTree(content);
+
+        if (this._cache.size < this._cache.max) this._cache.set(node, tree);
+        this._processNode(node, tree);
+    }
+
+    public async waitProcessingNodes(): Promise<void> {
+        await Promise.all(this._processingNodes.values());
+    }
+
+    private _tryMergeModification(newChange: Change): boolean {
         if (!this._pendingChanges.length) return false;
 
         const lastChange = this._pendingChanges.at(-1)!;
@@ -118,41 +134,48 @@ export class CacheManager {
     private _processChanges(): void {
         if (this._currentChanges.length) return;
 
-        this._currentChanges = [...this._pendingChanges];
+        this._currentChanges = this._pendingChanges;
         this._pendingChanges = [];
 
         for (const change of this._currentChanges) {
+            let updated = false;
+            let changedNode: CacheNode | undefined;
+            let affectedParentNode: FolderNode | undefined;
+
+            const { path } = change;
             switch (change.operation) {
                 case Operation.Delete:
-                    this._delete(change.path);
+                    [updated, changedNode, affectedParentNode] = this._delete(path);
                     break;
                 case Operation.Modify:
-                    this._modify(change.path, change.content, change.edits);
+                    this._modify(path, change.content, change.edits);
                     break;
                 case Operation.Rename:
-                    this._rename(change.path, change.newName);
+                    updated = this._rename(path, change.newName);
                     break;
                 case Operation.Move:
-                    this._move(change.path, change.newDir);
+                    [updated, changedNode, affectedParentNode] = this._move(path, change.newDir);
                     break;
             }
+
+            if (updated) this._vizEngine.update(changedNode, affectedParentNode);
         }
 
         this._currentChanges = [];
 
-        if (this._pendingChanges.length)
-            this._debouncer.schedule(() => this._processChanges());
+        if (this._pendingChanges.length) this._debouncer.schedule(() => this._processChanges());
     }
 
-    private _delete(path: string): void {
-        Logger.debug(`Delete ${path}`);
-        this._findNode(path)?.delete();
+    private _delete(path: string): [boolean, CacheNode | undefined, FolderNode | undefined] {
+        const node = this._findNode(path);
+        const parent = node?.parent;
+        node?.delete();
+        return [!!node, node, parent];
     }
 
     private _modify(path: string, content: string, edits: Edit[]): void {
-        Logger.debug(`Modify ${path}`);
         // if node exists in cache, 50/50 has lru cache
-        // if not, need to create new tree
+        // if not, definitely not in cache and need to create new tree
         const node = this._findNode(path) as FileNode ?? this._createFileNode(path);
         node.updated = true;
         const oldTree = this._cache.get(node);
@@ -161,42 +184,26 @@ export class CacheManager {
             this._analyzer.getTree(content);
 
         this._cache.set(node, tree);
-
-        const prevProcess = this._processingNodes.get(node);
-
-        const nextProcess = (prevProcess ?? Promise.resolve())
-        .then(() => {
-            if (!node.parent || !node.updated) return;
-            return this._analyzer.processTree(tree, node.data);
-        })
-        .then(isUpdated => {
-            if (isUpdated)
-                Logger.debug(`Updated ${path}\n${node.data.join('\n')}`);
-        })
-        .catch(error => Logger.error(error, 'CacheManager'))
-        .finally(() => {
-            if (this._processingNodes.get(node) === nextProcess)
-                this._processingNodes.delete(node);
-        });
-
-        this._processingNodes.set(node, nextProcess);
+        this._processNode(node, tree);
     }
 
-    private _rename(path: string, newName: string): void {
-        Logger.debug(`Rename ${path} to ${newName}`);
-        this._findNode(path)?.setName(newName);
+    private _rename(path: string, newName: string): boolean {
+        const node = this._findNode(path);
+        node?.setName(newName);
+        return !!node;
     }
 
-    private _move(path: string, newDir: string): void {
-        Logger.debug(`Move ${path} to ${newDir}`);
-        const newParent = this._setupFolder(newDir.split(sep));
-        this._findNode(path)?.setParent(newParent);
+    private _move(path: string, newDir: string): [boolean, CacheNode | undefined, FolderNode | undefined] {
+        const node = this._findNode(path);
+        const parent = node?.parent;
+        node?.setParent(this._createFolderNode(newDir.split(sep)));
+        return [!!node, node, parent];
     }
 
     private _findNode(path: string): CacheNode | undefined {
-        if (!path) return this._root;
+        if (!path) return this.root;
 
-        let current = this._root;
+        let current = this.root;
         const parts = path.split(sep);
         const last = parts.pop()!;
 
@@ -212,12 +219,12 @@ export class CacheManager {
     private _createFileNode(path: string): FileNode {
         const parts = path.split(sep);
         const name = parts.pop()!;
-        const parent = this._setupFolder(parts);
+        const parent = this._createFolderNode(parts);
         return new FileNode(name, parent);
     }
 
-    private _setupFolder(parts: string[]): FolderNode {
-        let current = this._root;
+    private _createFolderNode(parts: string[]): FolderNode {
+        let current = this.root;
 
         for (const part of parts) {
             const next = current.children.get(part) as FolderNode;
@@ -227,14 +234,30 @@ export class CacheManager {
         return current;
     }
 
+    private _processNode(node: FileNode, tree: Tree): void {
+        const process = (this._processingNodes.get(node) ?? Promise.resolve())
+            .then(() => {
+                if (!node.parent || !node.updated) return;
+                return this._analyzer.processTree(tree, node.data);
+            })
+            .then(updated => {
+                if (!updated) return;
+                this._vizEngine.update(node, node.parent);
+            })
+            .catch(error => Logger.error(error, 'CacheManager'))
+            .finally(() => {
+                if (this._processingNodes.get(node) === process)
+                    this._processingNodes.delete(node);
+            });
+
+        this._processingNodes.set(node, process);
+    }
+
     private _getNewCache(): LRUCache<FileNode, Tree> {
         return new LRUCache<FileNode, Tree>({
             max: getConfigValue<number>(ConfigSection.MaxCacheSize),
             noDisposeOnSet: true,
-            dispose: (_, node): void => {
-                node.updated = false;
-                node.data.length = 0;
-            }
+            dispose: (_, node): void => { if (!this._vizEngine.isActive) node.clear(); }
         });
     }
 }

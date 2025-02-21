@@ -1,5 +1,6 @@
 import { workspace, ExtensionContext, Disposable } from 'vscode';
 import { Watcher, CacheManager } from './bridge';
+import { visualize } from './commands';
 import { Logger } from './Logger';
 
 
@@ -15,6 +16,7 @@ export function activate(context: ExtensionContext): void {
             system = initSystem();
         }),
         { dispose: () => system?.dispose() },
+        visualize(context.extensionUri),
         Logger
     );
 
@@ -40,7 +42,7 @@ function initSystem(): Disposable | undefined {
         return Disposable.from(watcher, cacheManager);
     }
     catch (error) {
-        Logger.error(error instanceof Error ? error.message : String(error));
+        Logger.error(`${error}`, 'initSystem');
         return;
     }
 }
