@@ -68,18 +68,18 @@ export class JavaAnalyzer extends Analyzer {
         if (this._hasError(tree)) return false;
 
         const [generalData, importData, typeData] = await Promise.all([
-            this._processGeneralData(tree, data),
-            this._processImportData(tree, data),
-            this._processTypeData(tree, data)
+            this._processGeneralData(tree),
+            this._processImportData(tree),
+            this._processTypeData(tree)
         ]);
 
         data.length = 0;
-        data.push(generalData, importData, typeData);
+        data.push(generalData, importData, ...typeData);
 
         return true;
     }
 
-    private async _processGeneralData(tree: Tree, _: FileData[]): Promise<FileData> {
+    private async _processGeneralData(tree: Tree): Promise<GeneralData> {
         const totalLOC = tree.rootNode.endPosition.row + 1;
         let commentLOC = 0;
 
@@ -89,14 +89,14 @@ export class JavaAnalyzer extends Analyzer {
         return new GeneralData(totalLOC, commentLOC);
     }
 
-    private async _processImportData(tree: Tree, _: FileData[]): Promise<FileData> {
-        const imports = [];
+    private async _processImportData(tree: Tree): Promise<ImportData> {
+        const imports = new Set<string>();
         for(const {node} of this._importQuery.captures(tree.rootNode))
-            imports.push(node.text);
+            imports.add(node.text);
         return new ImportData(imports);
     }
 
-    private async _processTypeData(tree: Tree, _: FileData[]): Promise<FileData[]> {
+    private async _processTypeData(tree: Tree): Promise<TypeData[]> {
         const types: TypeData[] = [];
 
         for (const { pattern, captures } of this._typeDeclQuery.matches(tree.rootNode)) {
@@ -109,22 +109,21 @@ export class JavaAnalyzer extends Analyzer {
 
             const name = captures.find(c => c.name === 'type_name')!.node.text;
 
-            const modifiers = captures
+            const modifiers = new Set(
+                captures
                 .find(c => c.name === 'type_modifiers')?.node.text
                 .split(' ')
-                .filter(m => m && !m.startsWith('@'));
+                .filter(m => m && !m.startsWith('@'))
+            );
 
-            const superTypes = [];
+            const superTypes = new Set<string>();
             const superclass = captures.find(c => c.name === 'superclass')?.node;
-            if (superclass) superTypes.push(superclass.text);
+            if (superclass) superTypes.add(superclass.text);
             const interfaceList = captures.find(c => c.name === 'interface_list')?.node;
-            if (interfaceList) {
-                for (const child of interfaceList.children) {
-                    if (child.type === 'type_identifier') {
-                        superTypes.push(child.text);
-                    }
-                }
-            }
+            if (interfaceList)
+                for (const child of interfaceList.children)
+                    if (child.type === 'type_identifier')
+                        superTypes.add(child.text);
 
             const bodyNode = captures.find(c => c.name === kind)!.node;
 
@@ -152,30 +151,33 @@ export class JavaAnalyzer extends Analyzer {
                 case 0: {
                     const name = captures.find(c => c.name === 'field_name')!.node.text;
                     const type = captures.find(c => c.name === 'field_type')!.node.text;
-                    const modifiers = captures
+                    const modifiers = new Set<string>(
+                        captures
                         .find(c => c.name === 'field_modifiers')?.node.text
                         .split(' ')
-                        .filter(m => m && !m.startsWith('@'));
+                        .filter(m => m && !m.startsWith('@'))
+                    );
                     fields.set(name, new VariableData(name, type, modifiers));
                     break;
                 }
                 case 1: {
                     const name = captures.find(c => c.name === 'method_name')!.node.text;
                     const returnType = captures.find(c => c.name === 'return_type')!.node.text;
-                    const modifiers = captures
+                    const modifiers = new Set<string>(
+                        captures
                         .find(c => c.name === 'method_modifiers')?.node.text
                         .split(' ')
-                        .filter(m => m && !m.startsWith('@'));
+                        .filter(m => m && !m.startsWith('@'))
+                    );
                     const parameters = new Map<string, string>();
                     const paramList = captures.find(c => c.name === 'param_list')!.node;
-                    for (const param of paramList.children) {
+                    for (const param of paramList.children)
                         if (param.type === 'formal_parameter') {
                             const paramType = param.childForFieldName('type')!.text;
                             const paramName = param.childForFieldName('name')!.text;
                             parameters.set(paramName, paramType);
                         }
-                    }
-                    methods.set(name, new FunctionData(name, returnType, parameters, modifiers));
+                    methods.set(name, new FunctionData(name, returnType, modifiers, parameters));
                     break;
                 }
                 default: continue;

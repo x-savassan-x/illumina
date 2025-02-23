@@ -1,5 +1,6 @@
 export abstract class MetricNode {
-    public loc: number = 0;
+    public totalLOC: number = 0;
+    public commentLOC: number = 0;
     public commentDensity: number = 0;
 
     public constructor(
@@ -27,8 +28,21 @@ export abstract class MetricNode {
     }
 }
 
+
 export class FolderMetricNode extends MetricNode {
     public readonly children: Map<string, MetricNode> = new Map();
+    public totalTypes: number = 0;
+    public abstractTypes: number = 0;
+    public abstractness: number = 0;
 }
 
-export class FileMetricNode extends MetricNode {}
+
+export class FileMetricNode extends MetricNode {
+    public readonly types: Map<string, TypeMetric> = new Map();
+}
+
+
+type TypeMetric = {
+    fieldCount: number,
+    methodCount: number
+};

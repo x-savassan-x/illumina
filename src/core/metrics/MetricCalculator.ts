@@ -3,64 +3,115 @@ import {
     FolderNode,
     FileNode,
     GeneralData,
+    TypeData
 } from "@core/index";
 
 
-export interface MetricCalculator {
-    calculate(root: CacheNode): Promise<void>;
-}
-
-
-export class LOCMetric implements MetricCalculator {
-    public async calculate(node: CacheNode): Promise<void> {
-        // if (node instanceof FileNode) {
-        //     const generalData = node.data.find(d => d instanceof GeneralData) as GeneralData;
-        //     node.metricNode.loc = generalData?.totalLOC ?? 0;
-        // }
-        // else if (node instanceof FolderNode) {
-        //     let total = 0;
-        //     for (const child of node.children.values()) {
-        //         await this.calculate(child);
-        //         total += child.metricNode.loc;
-        //     }
-        //     node.metricNode.loc = total;
-        // }
+export abstract class MetricCalculator {
+    public abstract calculate(root: CacheNode, recalculated?: boolean): Promise<boolean>;
+    public async recalculate(start: CacheNode, end?: FolderNode): Promise<void> {
+        let current: CacheNode | undefined = start;
+        while (current && current !== end) {
+            const changed = await this.calculate(current, true);
+            if (!changed) break;
+            current = current.parent;
+        }
     }
 }
 
 
-export class CommentDensityMetric implements MetricCalculator {
-    public async calculate(node: CacheNode): Promise<void> {
-        // if (node instanceof FileNode) {
-        //     const generalData = node.data.find(d => d instanceof GeneralData) as GeneralData;
-        //     if (!generalData || generalData.totalLOC === 0) {
-        //         node.metricNode.commentDensity = 0;
-        //         return;
-        //     }
-        //     node.metricNode.commentDensity = (generalData.commentLOC / generalData.totalLOC) * 100;
-        // }
-        // else if (node instanceof FolderNode) {
-        //     let totalLOC = 0;
-        //     let totalCommentLOC = 0;
+export class GeneralMetric extends MetricCalculator {
+    public async calculate(node: CacheNode, recalculated?: boolean): Promise<boolean> {
+        const metricNode = node.metricNode;
+        let totalLOC = 0;
+        let commentLOC = 0;
+        if (node instanceof FileNode) {
+            const generalData = node.data.find(d => d instanceof GeneralData)!;
+            totalLOC = generalData.totalLOC;
+            commentLOC = generalData.commentLOC;
+        }
+        else if (node instanceof FolderNode) {
+            for (const child of node.children.values()) {
+                if (!recalculated) await this.calculate(child);
+                totalLOC += child.metricNode.totalLOC;
+                commentLOC += child.metricNode.commentLOC;
+            }
+        }
 
-        //     const processFolder = (folderNode: FolderNode): void => {
-        //         folderNode.children.forEach(child => {
-        //             if (child instanceof FileNode) {
-        //                 const generalData = child.data.find(d => d instanceof GeneralData) as GeneralData;
-        //                 if (generalData) {
-        //                     totalLOC += generalData.totalLOC;
-        //                     totalCommentLOC += generalData.commentLOC;
-        //                 }
-        //             }
-        //             else if (child instanceof FolderNode) {
-        //                 processFolder(child);
-        //             }
-        //         });
-        //     };
+        if (recalculated
+            && metricNode.totalLOC === totalLOC
+            && metricNode.commentLOC === commentLOC
+        ) return false;
 
-        //     processFolder(node);
+        metricNode.totalLOC = totalLOC;
+        metricNode.commentLOC = commentLOC;
+        metricNode.commentDensity = totalLOC ? commentLOC / totalLOC : 0;
 
-        //     node.metricNode.commentDensity = totalLOC === 0 ? 0 : (totalCommentLOC / totalLOC) * 100;
-        // }
+        return true;
+    }
+}
+
+
+export class AbstractnessMetric extends MetricCalculator {
+    public async calculate(node: CacheNode, recalculated?: boolean): Promise<boolean> {
+        if (node instanceof FileNode) return true;
+
+        const folderNode = node as FolderNode;
+        const metricNode = folderNode.metricNode;
+        let totalTypes = 0;
+        let abstractTypes = 0;
+
+        for (const child of folderNode.children.values()) {
+            if (child instanceof FileNode) {
+                const typesData = child.data.filter(d => d instanceof TypeData);
+                totalTypes += typesData.length;
+                abstractTypes += typesData.filter(
+                    d => d.modifiers.has('abstract')
+                    || d.kind === 'interface'
+                ).length;
+            }
+            else if (child instanceof FolderNode) {
+                if (!recalculated) await this.calculate(child);
+                totalTypes += child.metricNode.totalTypes;
+                abstractTypes += child.metricNode.abstractTypes;
+            }
+        }
+
+        if (recalculated
+            && metricNode.totalTypes === totalTypes
+            && metricNode.abstractTypes === abstractTypes
+        ) return false;
+
+        metricNode.totalTypes = totalTypes;
+        metricNode.abstractTypes = abstractTypes;
+        metricNode.abstractness = totalTypes ? abstractTypes / totalTypes : 0;
+
+        return true;
+    }
+}
+
+
+export class MemberCountMetric extends MetricCalculator {
+    public async calculate(node: CacheNode, recalculated?: boolean): Promise<boolean> {
+        if (recalculated && node instanceof FolderNode) return false;
+
+        if (node instanceof FileNode) {
+            const metricNode = node.metricNode;
+            const typesData = node.data.filter(d => d instanceof TypeData);
+            metricNode.types.clear();
+            typesData.forEach(data => {
+                metricNode.types.set(data.name, {
+                    fieldCount: data.fields.size,
+                    methodCount: data.methods.size
+                });
+            });
+        }
+        else if (node instanceof FolderNode) {
+            for (const child of node.children.values()) {
+                await this.calculate(child);
+            }
+        }
+
+        return true;
     }
 }

@@ -13,17 +13,15 @@ import { relative } from "path";
 import { CacheManager } from "@ext/bridge";
 import { ConfigSection, getConfigValue } from "@ext/config";
 import { MetricsProcessor, CacheNode, FolderNode } from "@core/index";
-import { Operation } from "./Change";
 import { Logger } from "@ext/Logger";
 
 
 export class StaticVizEngine {
-    public readonly onUpdate: Event<[CacheNode, FolderNode | undefined]>;
+    public readonly onUpdate: Event<void>;
     public isActive: boolean = false;
     private static _instance: StaticVizEngine;
-    private readonly _cacheManager: CacheManager = CacheManager.getInstance();
     private readonly _metricsProcessor: MetricsProcessor = new MetricsProcessor();
-    private readonly _updateEmitter = new EventEmitter<[CacheNode, FolderNode | undefined]>();
+    private readonly _updateEmitter = new EventEmitter<void>();
 
     private constructor() {
         this.onUpdate = this._updateEmitter.event;
@@ -38,34 +36,29 @@ export class StaticVizEngine {
         if (!CacheManager.isActive()) throw new Error('Cache system is not initialized');
         if (this.isActive) return;
 
-        await this._cacheManager.waitProcessingNodes();
+        await CacheManager.getInstance().waitProcessingNodes();
 
         await window.withProgress({
             title: "Initializing visualization...",
             location: ProgressLocation.Notification,
             cancellable: true
-        }, async (progress, token) => this._initViz(progress, token));
+        }, async (progress, token) => await this._initViz(progress, token));
 
         this.isActive = true;
     }
 
     public async deactivate(): Promise<void> {
         if (!this.isActive) return;
-        await this._cacheManager.waitProcessingNodes();
+        await CacheManager.getInstance().waitProcessingNodes();
         this.isActive = false;
     }
 
-    public update(
-        operation: Operation,
-        changedNode: CacheNode,
-        affectedParentNode?: FolderNode
-    ): void {
+    public update(changedNode?: CacheNode, affectedParentNode?: FolderNode): void {
         if (!this.isActive) return;
-        if (operation === Operation.Rename)
-            this._updateEmitter.fire([changedNode, affectedParentNode]);
+        if (!changedNode) this._updateEmitter.fire();
         else
             this._metricsProcessor.recalculate(changedNode, affectedParentNode)
-            .then(() => this._updateEmitter.fire([changedNode, affectedParentNode]))
+            .then(() => this._updateEmitter.fire())
             .catch(error => Logger.error(error, 'StaticVizEngine'));
     }
 
@@ -77,6 +70,7 @@ export class StaticVizEngine {
         if (token.isCancellationRequested)
             throw new Error('Visualization initialization was cancelled');
 
+        const cacheManager = CacheManager.getInstance();
         const total = sourceFiles.length;
         const batchSize = 10;
         let processed = 0;
@@ -86,7 +80,7 @@ export class StaticVizEngine {
                 throw new Error('Visualization initialization was cancelled');
 
             const batch = sourceFiles.slice(i, i + batchSize);
-            const tasks = batch.map(file => this._cacheManager.ensureNode(file));
+            const tasks = batch.map(file => cacheManager.ensureNode(file));
             await Promise.all(tasks);
             processed += batch.length;
 
@@ -96,7 +90,8 @@ export class StaticVizEngine {
             });
         }
 
-        await this._metricsProcessor.calculate(this._cacheManager.root);
+        await cacheManager.waitProcessingNodes();
+        await this._metricsProcessor.calculate(cacheManager.root);
     }
 
     private async _getSourceFiles(): Promise<[string, Uri][]> {
