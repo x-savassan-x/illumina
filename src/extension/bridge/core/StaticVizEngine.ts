@@ -5,18 +5,29 @@ import {
     ProgressLocation,
     CancellationToken,
     Uri,
-    RelativePattern
+    RelativePattern,
+    EventEmitter,
+    Event
 } from "vscode";
 import { relative } from "path";
 import { CacheManager } from "@ext/bridge";
 import { ConfigSection, getConfigValue } from "@ext/config";
-import { CacheNode, FolderNode } from "@core/index";
+import { MetricsProcessor, CacheNode, FolderNode } from "@core/index";
+import { Operation } from "./Change";
+import { Logger } from "@ext/Logger";
 
 
 export class StaticVizEngine {
+    public readonly onUpdate: Event<[CacheNode, FolderNode | undefined]>;
     public isActive: boolean = false;
     private static _instance: StaticVizEngine;
     private readonly _cacheManager: CacheManager = CacheManager.getInstance();
+    private readonly _metricsProcessor: MetricsProcessor = new MetricsProcessor();
+    private readonly _updateEmitter = new EventEmitter<[CacheNode, FolderNode | undefined]>();
+
+    private constructor() {
+        this.onUpdate = this._updateEmitter.event;
+    }
 
     public static getInstance(): StaticVizEngine {
         this._instance ??= new StaticVizEngine();
@@ -30,8 +41,8 @@ export class StaticVizEngine {
         await this._cacheManager.waitProcessingNodes();
 
         await window.withProgress({
-            location: ProgressLocation.Notification,
             title: "Initializing visualization...",
+            location: ProgressLocation.Notification,
             cancellable: true
         }, async (progress, token) => this._initViz(progress, token));
 
@@ -44,8 +55,18 @@ export class StaticVizEngine {
         this.isActive = false;
     }
 
-    public update(changedNode?: CacheNode, affectedParentNode?: FolderNode): void {
+    public update(
+        operation: Operation,
+        changedNode: CacheNode,
+        affectedParentNode?: FolderNode
+    ): void {
         if (!this.isActive) return;
+        if (operation === Operation.Rename)
+            this._updateEmitter.fire([changedNode, affectedParentNode]);
+        else
+            this._metricsProcessor.recalculate(changedNode, affectedParentNode)
+            .then(() => this._updateEmitter.fire([changedNode, affectedParentNode]))
+            .catch(error => Logger.error(error, 'StaticVizEngine'));
     }
 
     private async _initViz(
@@ -74,6 +95,8 @@ export class StaticVizEngine {
                 increment: (batch.length / total) * 100
             });
         }
+
+        await this._metricsProcessor.calculate(this._cacheManager.root);
     }
 
     private async _getSourceFiles(): Promise<[string, Uri][]> {

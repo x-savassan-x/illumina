@@ -142,8 +142,8 @@ export class CacheManager {
             let changedNode: CacheNode | undefined;
             let affectedParentNode: FolderNode | undefined;
 
-            const { path } = change;
-            switch (change.operation) {
+            const { operation, path } = change;
+            switch (operation) {
                 case Operation.Delete:
                     [updated, changedNode, affectedParentNode] = this._delete(path);
                     break;
@@ -151,14 +151,14 @@ export class CacheManager {
                     this._modify(path, change.content, change.edits);
                     break;
                 case Operation.Rename:
-                    updated = this._rename(path, change.newName);
+                    [updated, changedNode] = this._rename(path, change.newName);
                     break;
                 case Operation.Move:
                     [updated, changedNode, affectedParentNode] = this._move(path, change.newDir);
                     break;
             }
 
-            if (updated) this._vizEngine.update(changedNode, affectedParentNode);
+            if (updated) this._vizEngine.update(operation, changedNode!, affectedParentNode);
         }
 
         this._currentChanges = [];
@@ -187,10 +187,10 @@ export class CacheManager {
         this._processNode(node, tree);
     }
 
-    private _rename(path: string, newName: string): boolean {
+    private _rename(path: string, newName: string): [boolean, CacheNode | undefined] {
         const node = this._findNode(path);
         node?.setName(newName);
-        return !!node;
+        return [!!node, node];
     }
 
     private _move(path: string, newDir: string): [boolean, CacheNode | undefined, FolderNode | undefined] {
@@ -242,7 +242,7 @@ export class CacheManager {
             })
             .then(updated => {
                 if (!updated) return;
-                this._vizEngine.update(node, node.parent);
+                this._vizEngine.update(Operation.Modify, node, node.parent);
             })
             .catch(error => Logger.error(error, 'CacheManager'))
             .finally(() => {

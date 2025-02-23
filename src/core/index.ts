@@ -12,6 +12,7 @@ export {
     VariableData,
     FunctionData
 } from './cache/FileData';
+export { MetricsProcessor } from './metrics/MetricProcessor';
 
 
 export function getAnalyzer(language: string): Analyzer {
