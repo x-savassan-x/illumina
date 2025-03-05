@@ -1,7 +1,7 @@
 import { LogOutputChannel, window } from "vscode";
 import { existsSync, mkdirSync, WriteStream, createWriteStream } from "fs";
 import { join } from "path";
-import { LogLevel, LogData } from "@shared/types/log";
+import { LogLevel, LogData } from "@shared/index";
 
 
 interface IWriter {

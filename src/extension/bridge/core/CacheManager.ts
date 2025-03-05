@@ -16,8 +16,8 @@ export class CacheManager {
     private static _instance: CacheManager | undefined;
     private readonly _debouncer = new Debouncer();
     private readonly _processingNodes = new Map<FileNode, Promise<void>>();
-    private readonly _configChangeHandler: Disposable;
     private readonly _vizEngine = StaticVizEngine.getInstance();
+    private readonly _disposable: Disposable;
     private _cache: LRUCache<FileNode, Tree>;
     private _pendingChanges: Change[] = [];
     private _currentChanges: Change[] = [];
@@ -27,7 +27,7 @@ export class CacheManager {
         this.root = new FolderNode(getConfigValue<string>(ConfigSection.SourceDirectory));
         this._cache = this._getNewCache();
         this._analyzer = getAnalyzer(getConfigValue<string>(ConfigSection.SourceLanguage));
-        this._configChangeHandler = workspace.onDidChangeConfiguration(e => handleConfigChanges(e, [
+        this._disposable = workspace.onDidChangeConfiguration(e => handleConfigChanges(e, [
             [[ConfigSection.SourceDirectory, ConfigSection.SourceLanguage], (): void => {
                 this.root = new FolderNode(getConfigValue<string>(ConfigSection.SourceDirectory));
                 this._cache.clear();
@@ -55,7 +55,7 @@ export class CacheManager {
     }
 
     public dispose(): void {
-        this._configChangeHandler.dispose();
+        this._disposable.dispose();
         this._debouncer.dispose();
         CacheManager._instance = undefined;
     }

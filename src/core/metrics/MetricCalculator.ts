@@ -98,12 +98,12 @@ export class MemberCountMetric extends MetricCalculator {
         if (node instanceof FileNode) {
             const metricNode = node.metricNode;
             const typesData = node.data.filter(d => d instanceof TypeData);
-            metricNode.types.clear();
+            metricNode.types = {};
             typesData.forEach(data => {
-                metricNode.types.set(data.name, {
+                metricNode.types[data.name] = {
                     fieldCount: data.fields.size,
                     methodCount: data.methods.size
-                });
+                };
             });
         }
         else if (node instanceof FolderNode) {

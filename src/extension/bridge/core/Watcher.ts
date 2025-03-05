@@ -13,7 +13,7 @@ import { ConfigSection, handleConfigChanges, getConfigValue } from "@ext/config"
 
 export class Watcher {
     private static _instance: Watcher | undefined;
-    private readonly _disposables: Disposable[];
+    private readonly _disposable: Disposable;
     private _srcRoot: string;
     private _srcLang: string;
 
@@ -24,7 +24,7 @@ export class Watcher {
         this._srcRoot = `${this._workspaceRoot}/${getConfigValue<string>(ConfigSection.SourceDirectory)}`;
         this._srcLang = getConfigValue<string>(ConfigSection.SourceLanguage);
 
-        this._disposables = [
+        this._disposable = Disposable.from(
             workspace.onDidDeleteFiles(e => this._handleDeletion(e)),
             workspace.onDidChangeTextDocument(e => this._handleModification(e)),
             workspace.onDidRenameFiles(e => this._handleRenaming(e)),
@@ -36,7 +36,7 @@ export class Watcher {
                     this._srcLang = getConfigValue<string>(ConfigSection.SourceLanguage);
                 }]
             ]))
-        ];
+        );
     }
 
     public static getInstance(
@@ -48,7 +48,7 @@ export class Watcher {
     }
 
     public dispose(): void {
-        this._disposables.forEach(d => d.dispose());
+        this._disposable.dispose();
         Watcher._instance = undefined;
     }
 

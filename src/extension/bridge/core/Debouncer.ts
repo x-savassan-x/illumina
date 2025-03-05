@@ -2,13 +2,13 @@ import { workspace, Disposable } from "vscode";
 import { ConfigSection, getConfigValue, handleConfigChanges } from "@ext/config";
 
 export class Debouncer {
-    private readonly _configChangeHandler: Disposable;
+    private readonly _disposable: Disposable;
     private _timeoutId?: NodeJS.Timeout | undefined;
     private _interval: number;
 
     public constructor() {
         this._interval = getConfigValue<number>(ConfigSection.DebounceInterval);
-        this._configChangeHandler = workspace.onDidChangeConfiguration(e => handleConfigChanges(e, [
+        this._disposable = workspace.onDidChangeConfiguration(e => handleConfigChanges(e, [
             [[ConfigSection.DebounceInterval], (): void => {
                 this._clear();
                 this._interval = getConfigValue<number>(ConfigSection.DebounceInterval);
@@ -25,7 +25,7 @@ export class Debouncer {
     }
 
     public dispose(): void {
-        this._configChangeHandler.dispose();
+        this._disposable.dispose();
         this._clear();
     }
 

@@ -1,5 +1,5 @@
 import { window, commands, Uri, Disposable } from 'vscode';
-import { StaticVizEngine, VisualizationPanel } from './bridge';
+import { StaticVizEngine, VizPanel } from './bridge';
 
 
 export function visualize(uri: Uri): Disposable {
@@ -7,7 +7,7 @@ export function visualize(uri: Uri): Disposable {
         try {
             const engine = StaticVizEngine.getInstance();
             await engine.activate();
-            if (engine.isActive) VisualizationPanel.createOrShow(uri);
+            if (engine.isActive) VizPanel.show(uri);
         }
         catch (error) {
             window.showErrorMessage(`Failed to initialize visualization: ${error}`);

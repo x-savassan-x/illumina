@@ -83,9 +83,10 @@
     "@types/node": "20.x",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "@types/three": "^0.174.0",
     "@types/vscode": "^1.97.0",
-    "@typescript-eslint/eslint-plugin": "^8.24.1",
-    "@typescript-eslint/parser": "^8.24.1",
+    "@typescript-eslint/eslint-plugin": "^8.25.0",
+    "@typescript-eslint/parser": "^8.25.0",
     "@vitejs/plugin-react": "^4.3.4",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
@@ -103,6 +104,7 @@
     "lru-cache": "^11.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "three": "^0.174.0",
     "tree-sitter": "^0.21.1",
     "tree-sitter-java": "^0.23.5"
   }
