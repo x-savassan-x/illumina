@@ -3,15 +3,8 @@ export interface FileData {}
 
 export class GeneralData implements FileData {
     public constructor(
-        public totalLOC: number,
-        public commentLOC: number
-    ) { }
-}
-
-
-export class ImportData implements FileData {
-    public constructor(
-        public imports: Set<string>
+        public totalLines: number,
+        public commentLines: number
     ) { }
 }
 

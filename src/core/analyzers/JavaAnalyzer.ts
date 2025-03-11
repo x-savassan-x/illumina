@@ -2,9 +2,8 @@ import { Tree, Query, SyntaxNode } from 'tree-sitter';
 import Java from 'tree-sitter-java';
 import { Analyzer } from "./Analyzer";
 import {
-    FileData,
+    FileNode,
     GeneralData,
-    ImportData,
     TypeData,
     FunctionData,
     VariableData
@@ -13,7 +12,6 @@ import {
 
 export class JavaAnalyzer extends Analyzer {
     private readonly _generalQuery: Query;
-    private readonly _importQuery: Query;
     private readonly _typeDeclQuery: Query;
     private readonly _typeBodyQuery: Query;
 
@@ -22,11 +20,6 @@ export class JavaAnalyzer extends Analyzer {
         this._generalQuery = new Query(Java, `
             (line_comment) @comment
             (block_comment) @comment
-        `);
-        this._importQuery = new Query(Java, `
-            (import_declaration
-                (scoped_identifier) @import
-            )
         `);
         this._typeDeclQuery = new Query(Java, `
             (program
@@ -64,36 +57,29 @@ export class JavaAnalyzer extends Analyzer {
         `);
     }
 
-    public override async processTree(tree: Tree, data: FileData[]): Promise<boolean> {
+    public override async processTree(tree: Tree, node: FileNode): Promise<boolean> {
         if (this._hasError(tree)) return false;
 
-        const [generalData, importData, typeData] = await Promise.all([
+        const [generalData, typeData] = await Promise.all([
             this._processGeneralData(tree),
-            this._processImportData(tree),
             this._processTypeData(tree)
         ]);
 
+        const data = node.data;
         data.length = 0;
-        data.push(generalData, importData, ...typeData);
+        data.push(generalData, ...typeData);
 
         return true;
     }
 
     private async _processGeneralData(tree: Tree): Promise<GeneralData> {
-        const totalLOC = tree.rootNode.endPosition.row + 1;
-        let commentLOC = 0;
+        const totalLines = tree.rootNode.endPosition.row + 1;
+        let commentLines = 0;
 
         for(const {node} of this._generalQuery.captures(tree.rootNode))
-            commentLOC += node.endPosition.row - node.startPosition.row + 1;
+            commentLines += node.endPosition.row - node.startPosition.row + 1;
 
-        return new GeneralData(totalLOC, commentLOC);
-    }
-
-    private async _processImportData(tree: Tree): Promise<ImportData> {
-        const imports = new Set<string>();
-        for(const {node} of this._importQuery.captures(tree.rootNode))
-            imports.add(node.text);
-        return new ImportData(imports);
+        return new GeneralData(totalLines, commentLines);
     }
 
     private async _processTypeData(tree: Tree): Promise<TypeData[]> {
@@ -112,6 +98,7 @@ export class JavaAnalyzer extends Analyzer {
             const modifiers = new Set(
                 captures
                 .find(c => c.name === 'type_modifiers')?.node.text
+                .trim()
                 .split(' ')
                 .filter(m => m && !m.startsWith('@'))
             );
@@ -120,10 +107,10 @@ export class JavaAnalyzer extends Analyzer {
             const superclass = captures.find(c => c.name === 'superclass')?.node;
             if (superclass) superTypes.add(superclass.text);
             const interfaceList = captures.find(c => c.name === 'interface_list')?.node;
-            if (interfaceList)
-                for (const child of interfaceList.children)
-                    if (child.type === 'type_identifier')
-                        superTypes.add(child.text);
+            interfaceList?.children.forEach(child => {
+                if (child.type === 'type_identifier')
+                    superTypes.add(child.text);
+            });
 
             const bodyNode = captures.find(c => c.name === kind)!.node;
 
@@ -154,6 +141,7 @@ export class JavaAnalyzer extends Analyzer {
                     const modifiers = new Set<string>(
                         captures
                         .find(c => c.name === 'field_modifiers')?.node.text
+                        .trim()
                         .split(' ')
                         .filter(m => m && !m.startsWith('@'))
                     );
@@ -166,6 +154,7 @@ export class JavaAnalyzer extends Analyzer {
                     const modifiers = new Set<string>(
                         captures
                         .find(c => c.name === 'method_modifiers')?.node.text
+                        .trim()
                         .split(' ')
                         .filter(m => m && !m.startsWith('@'))
                     );

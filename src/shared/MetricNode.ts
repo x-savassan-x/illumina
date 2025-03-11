@@ -1,6 +1,6 @@
 export abstract class MetricNode {
-    public totalLOC: number = 0;
-    public commentLOC: number = 0;
+    public totalLines: number = 0;
+    public commentLines: number = 0;
     public commentDensity: number = 0;
 
     public constructor(

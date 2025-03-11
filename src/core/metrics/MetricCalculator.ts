@@ -23,29 +23,29 @@ export abstract class MetricCalculator {
 export class GeneralMetric extends MetricCalculator {
     public async calculate(node: CacheNode, recalculated?: boolean): Promise<boolean> {
         const metricNode = node.metricNode;
-        let totalLOC = 0;
-        let commentLOC = 0;
+        let totalLines = 0;
+        let commentLines = 0;
         if (node instanceof FileNode) {
             const generalData = node.data.find(d => d instanceof GeneralData)!;
-            totalLOC = generalData.totalLOC;
-            commentLOC = generalData.commentLOC;
+            totalLines = generalData.totalLines;
+            commentLines = generalData.commentLines;
         }
         else if (node instanceof FolderNode) {
             for (const child of node.children.values()) {
                 if (!recalculated) await this.calculate(child);
-                totalLOC += child.metricNode.totalLOC;
-                commentLOC += child.metricNode.commentLOC;
+                totalLines += child.metricNode.totalLines;
+                commentLines += child.metricNode.commentLines;
             }
         }
 
         if (recalculated
-            && metricNode.totalLOC === totalLOC
-            && metricNode.commentLOC === commentLOC
+            && metricNode.totalLines === totalLines
+            && metricNode.commentLines === commentLines
         ) return false;
 
-        metricNode.totalLOC = totalLOC;
-        metricNode.commentLOC = commentLOC;
-        metricNode.commentDensity = totalLOC ? commentLOC / totalLOC : 0;
+        metricNode.totalLines = totalLines;
+        metricNode.commentLines = commentLines;
+        metricNode.commentDensity = totalLines ? commentLines / totalLines : 0;
 
         return true;
     }

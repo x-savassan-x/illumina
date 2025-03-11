@@ -40,13 +40,13 @@ export default [{
             {
                 "selector": "memberLike",
                 "modifiers": ["private"],
-                "format": ["camelCase"],
+                "format": ["camelCase", "UPPER_CASE"],
                 "leadingUnderscore": "require"
             },
             {
                 "selector": "memberLike",
                 "modifiers": ["protected"],
-                "format": ["camelCase"],
+                "format": ["camelCase", "UPPER_CASE"],
                 "leadingUnderscore": "require"
             },
             {

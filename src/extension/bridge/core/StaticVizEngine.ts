@@ -39,7 +39,7 @@ export class StaticVizEngine {
         await CacheManager.getInstance().waitProcessingNodes();
 
         await window.withProgress({
-            title: "Initializing visualization...",
+            title: "Initializing visualization",
             location: ProgressLocation.Notification,
             cancellable: true
         }, async (progress, token) => await this._initViz(progress, token));

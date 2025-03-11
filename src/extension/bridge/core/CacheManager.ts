@@ -238,7 +238,7 @@ export class CacheManager {
         const process = (this._processingNodes.get(node) ?? Promise.resolve())
             .then(() => {
                 if (!node.parent || !node.updated) return;
-                return this._analyzer.processTree(tree, node.data);
+                return this._analyzer.processTree(tree, node);
             })
             .then(updated => {
                 if (!updated) return;

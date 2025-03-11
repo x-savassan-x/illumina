@@ -7,7 +7,6 @@ export { CacheNode, FolderNode, FileNode} from './cache/CacheNode';
 export {
     FileData,
     GeneralData,
-    ImportData,
     TypeData,
     VariableData,
     FunctionData

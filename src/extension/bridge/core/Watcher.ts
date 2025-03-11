@@ -95,9 +95,8 @@ export class Watcher {
                     if (lines.length > 1) {
                         row += lines.length - 1;
                         column = lines.at(-1)!.length;
-                    } else {
-                        column += lines[0].length;
                     }
+                    else column += lines[0].length;
                 }
                 const newEndPosition = { row, column };
 
