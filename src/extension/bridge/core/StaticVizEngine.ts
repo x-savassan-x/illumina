@@ -27,7 +27,7 @@ export class StaticVizEngine {
         this.onUpdate = this._updateEmitter.event;
     }
 
-    public static getInstance(): StaticVizEngine {
+    public static get instance(): StaticVizEngine {
         this._instance ??= new StaticVizEngine();
         return this._instance;
     }
@@ -36,7 +36,7 @@ export class StaticVizEngine {
         if (!CacheManager.isActive()) throw new Error('Cache system is not initialized');
         if (this.isActive) return;
 
-        await CacheManager.getInstance().waitProcessingNodes();
+        await CacheManager.instance.waitProcessingNodes();
 
         await window.withProgress({
             title: "Initializing visualization",
@@ -45,12 +45,14 @@ export class StaticVizEngine {
         }, async (progress, token) => await this._initViz(progress, token));
 
         this.isActive = true;
+        Logger.info('Visualization is activated');
     }
 
     public async deactivate(): Promise<void> {
         if (!this.isActive) return;
-        await CacheManager.getInstance().waitProcessingNodes();
+        await CacheManager.instance.waitProcessingNodes();
         this.isActive = false;
+        Logger.info('Visualization is deactivated');
     }
 
     public update(changedNode?: CacheNode, affectedParentNode?: FolderNode): void {
@@ -70,7 +72,7 @@ export class StaticVizEngine {
         if (token.isCancellationRequested)
             throw new Error('Visualization initialization was cancelled');
 
-        const cacheManager = CacheManager.getInstance();
+        const cacheManager = CacheManager.instance;
         const total = sourceFiles.length;
         const batchSize = 10;
         let processed = 0;

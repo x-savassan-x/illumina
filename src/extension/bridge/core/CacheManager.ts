@@ -16,7 +16,7 @@ export class CacheManager {
     private static _instance: CacheManager | undefined;
     private readonly _debouncer = new Debouncer();
     private readonly _processingNodes = new Map<FileNode, Promise<void>>();
-    private readonly _vizEngine = StaticVizEngine.getInstance();
+    private readonly _vizEngine = StaticVizEngine.instance;
     private readonly _disposable: Disposable;
     private _cache: LRUCache<FileNode, Tree>;
     private _pendingChanges: Change[] = [];
@@ -43,7 +43,7 @@ export class CacheManager {
         ]));
     }
 
-    public static getInstance(): CacheManager {
+    public static get instance(): CacheManager {
         this._instance ??= new CacheManager();
         return this._instance;
     }
@@ -167,6 +167,7 @@ export class CacheManager {
     }
 
     private _delete(path: string): [boolean, CacheNode | undefined, FolderNode | undefined] {
+        Logger.info(`Delete ${path}`);
         const node = this._findNode(path);
         const parent = node?.parent;
         node?.delete();
@@ -174,6 +175,7 @@ export class CacheManager {
     }
 
     private _modify(path: string, content: string, edits: Edit[]): void {
+        Logger.info(`Modify ${path}`);
         // if node exists in cache, 50/50 has lru cache
         // if not, definitely not in cache and need to create new tree
         const node = this._findNode(path) as FileNode ?? this._createFileNode(path);
@@ -188,12 +190,14 @@ export class CacheManager {
     }
 
     private _rename(path: string, newName: string): boolean {
+        Logger.info(`Rename ${path} to ${newName}`);
         const node = this._findNode(path);
         node?.setName(newName);
         return !!node;
     }
 
     private _move(path: string, newDir: string): [boolean, CacheNode | undefined, FolderNode | undefined] {
+        Logger.info(`Move ${path} to ${newDir}`);
         const node = this._findNode(path);
         const parent = node?.parent;
         node?.setParent(this._createFolderNode(newDir.split(sep)));

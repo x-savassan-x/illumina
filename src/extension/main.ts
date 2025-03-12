@@ -30,7 +30,7 @@ function initSystem(): Disposable | undefined {
     if (!folders || folders.length > 1) return;
 
     try {
-        const cacheManager = CacheManager.getInstance();
+        const cacheManager = CacheManager.instance;
         Logger.info('CacheManager initialized');
 
         const watcher = Watcher.getInstance(

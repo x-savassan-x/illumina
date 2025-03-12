@@ -9,7 +9,7 @@ import { Logger } from "@ext/Logger";
 export class VizPanel {
     private static _currentPanel: VizPanel | undefined;
     private readonly _panel: WebviewPanel;
-    private readonly _vizEngine = StaticVizEngine.getInstance();
+    private readonly _vizEngine = StaticVizEngine.instance;
     private readonly _disposable: Disposable;
 
     private constructor(panel: WebviewPanel, extensionUri: Uri) {
@@ -63,7 +63,7 @@ export class VizPanel {
     private _updateUI(): void {
         this._panel.webview.postMessage({
             command: 'update',
-            data: CacheManager.getInstance().root.metricNode
+            data: CacheManager.instance.root.metricNode
         });
     }
 

@@ -5,7 +5,7 @@ import { StaticVizEngine, VizPanel } from './bridge';
 export function visualize(uri: Uri): Disposable {
     return commands.registerCommand('illumina.visualize', async () => {
         try {
-            const engine = StaticVizEngine.getInstance();
+            const engine = StaticVizEngine.instance;
             await engine.activate();
             if (engine.isActive) VizPanel.show(uri);
         }

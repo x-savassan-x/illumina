@@ -1,39 +1,30 @@
 import React, { useEffect, useState } from 'react';
-import { Message, FolderMetricNode } from '@shared/index';
-import LoadingScreen from './components/LoadingScreen';
-import CityMetaphor from './components/CityMetaphor';
-import './styles/App.css';
-
-
-declare global {
-  interface Window {
-    acquireVsCodeApi: () => {
-      postMessage: (message: Message) => void;
-    };
-  }
-}
-
-
-const vscode = window.acquireVsCodeApi();
+import { getVSCodeAPI } from './vscode-api';
+import { Message, FolderMetricNode, LogLevel } from '@shared/index';
+import { LoadingScreen, VizScreen } from './components';
+import './App.css';
 
 
 const App: React.FC = () => {
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [data, setData] = useState<FolderMetricNode | null>(null);
+  const [data, setData] = useState<FolderMetricNode | undefined>(undefined);
 
   useEffect(() => {
+    const vscode = getVSCodeAPI();
     const handleMessage = (event: MessageEvent) => {
       const message = event.data as Message;
       switch (message.command) {
-        case 'update':
-          setData(message.data as FolderMetricNode);
-          setIsLoading(false);
-          break;
+        case 'update': setData(message.data as FolderMetricNode); break;
+        default: vscode.postMessage({
+          command: 'log',
+          data: {
+            level: LogLevel.Error,
+            content: `Unknown message command: ${message.command}`
+          }
+        })
       }
     };
 
     window.addEventListener('message', handleMessage);
-
     vscode.postMessage({ command: 'ready' });
 
     return () => {
@@ -43,11 +34,7 @@ const App: React.FC = () => {
 
   return (
     <div className="app-container">
-      {isLoading ? (
-        <LoadingScreen />
-      ) : (
-        <CityMetaphor data={data} />
-      )}
+      {data ? <VizScreen data={data} /> : <LoadingScreen />}
     </div>
   );
 };
