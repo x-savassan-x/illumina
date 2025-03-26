@@ -25,27 +25,36 @@ export class GeneralMetric extends MetricCalculator {
         const metricNode = node.metricNode;
         let totalLines = 0;
         let commentLines = 0;
+        let height = 0;
+        let leafCount = 0;
         if (node instanceof FileNode) {
             const generalData = node.data.find(d => d instanceof GeneralData)!;
             totalLines = generalData.totalLines;
             commentLines = generalData.commentLines;
+            leafCount = 1;
         }
         else if (node instanceof FolderNode) {
             for (const child of node.children.values()) {
                 if (!recalculated) await this.calculate(child);
                 totalLines += child.metricNode.totalLines;
                 commentLines += child.metricNode.commentLines;
+                height = Math.max(height, child.metricNode.height + 1);
+                leafCount += child.metricNode.leafCount;
             }
         }
 
         if (recalculated
             && metricNode.totalLines === totalLines
             && metricNode.commentLines === commentLines
+            && metricNode.height === height
+            && metricNode.leafCount === leafCount
         ) return false;
 
         metricNode.totalLines = totalLines;
         metricNode.commentLines = commentLines;
         metricNode.commentDensity = totalLines ? commentLines / totalLines : 0;
+        metricNode.height = height;
+        metricNode.leafCount = leafCount;
 
         return true;
     }

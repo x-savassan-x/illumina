@@ -2,6 +2,8 @@ export abstract class MetricNode {
     public totalLines: number = 0;
     public commentLines: number = 0;
     public commentDensity: number = 0;
+    public height = 0;
+    public leafCount = 1;
 
     public constructor(
         public name: string = ''

@@ -15,7 +15,6 @@ declare global {
 }
 
 
-// Initialize vscode API once and store it
 let vscodeApi: VSCodeAPI | undefined;
 
 
