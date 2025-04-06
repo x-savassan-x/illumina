@@ -1,4 +1,4 @@
-export interface Message {
+export type Message = {
     command: string;
     data?: unknown;
 }

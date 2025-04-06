@@ -2,7 +2,7 @@ import {
     MetricCalculator,
     GeneralMetric,
     AbstractnessMetric,
-    MemberCountMetric
+    WeightedMethodCountMetric
 } from "./MetricCalculator";
 import { CacheNode, FolderNode } from "@core/cache/CacheNode";
 
@@ -11,7 +11,7 @@ export class MetricsProcessor {
     private readonly _calculators: MetricCalculator[] = [
         new GeneralMetric(),
         new AbstractnessMetric(),
-        new MemberCountMetric(),
+        new WeightedMethodCountMetric(),
     ];
 
     public async calculate(node: CacheNode): Promise<void> {

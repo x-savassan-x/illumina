@@ -1,85 +1,118 @@
-import { Tree, Query, SyntaxNode } from 'tree-sitter';
+import { Tree, Query } from 'tree-sitter';
 import Java from 'tree-sitter-java';
 import { Analyzer } from "./Analyzer";
 import {
     FileNode,
     GeneralData,
     TypeData,
-    FunctionData,
-    VariableData
+    FunctionWeightData
 } from "@core/index";
 
 
 export class JavaAnalyzer extends Analyzer {
-    private readonly _generalQuery: Query;
-    private readonly _typeDeclQuery: Query;
-    private readonly _typeBodyQuery: Query;
+    private readonly _commentQuery: Query = new Query(Java, `
+        (line_comment) @line_comment
+        (block_comment) @block_comment
+    `);
+    private readonly _typeDeclQuery: Query = new Query(Java, `
+        (class_declaration
+            (modifiers)? @type_modifiers
+            (identifier) @type_name
+        ) @class
 
-    public constructor() {
-        super(Java);
-        this._generalQuery = new Query(Java, `
-            (line_comment) @comment
-            (block_comment) @comment
-        `);
-        this._typeDeclQuery = new Query(Java, `
-            (program
-                (class_declaration
-                    (modifiers)? @type_modifiers
-                    (identifier) @type_name
-                    (superclass (type_identifier) @superclass)?
-                    (super_interfaces (type_list) @interface_list)?
-                ) @class
-            )
-            
-            (program
-                (interface_declaration
-                    (modifiers)? @type_modifiers
-                    (identifier) @type_name
-                    (extends_interfaces (type_list) @interface_list)?
-                ) @interface
-            )
-        `);
-        this._typeBodyQuery = new Query(Java, `
-            (field_declaration
-                (modifiers)? @field_modifiers
-                type: (_) @field_type
-                (variable_declarator name:
-                    (identifier) @field_name
-                )
-            ) @field
+        (interface_declaration
+            (modifiers)? @type_modifiers
+            (identifier) @type_name
+        ) @interface
+    `);
+    private readonly _methodQuery = new Query(Java, `
+        (method_declaration
+            name: (identifier) @name
+        ) @method
 
-            (method_declaration
-                (modifiers)? @method_modifiers
-                type: (_) @return_type
-                name: (identifier) @method_name
-                (formal_parameters) @param_list
-            ) @method
-        `);
-    }
+        (constructor_declaration
+            name: (identifier) @name
+        ) @method
+    `);
+
+    public constructor() { super(Java); }
 
     public override async processTree(tree: Tree, node: FileNode): Promise<boolean> {
         if (this._hasError(tree)) return false;
 
-        const [generalData, typeData] = await Promise.all([
+        const [generalData, typeData, functionWeightData] = await Promise.all([
             this._processGeneralData(tree),
-            this._processTypeData(tree)
+            this._processTypeData(tree),
+            this._processFunctionWeights(tree)
         ]);
 
         const data = node.data;
         data.length = 0;
-        data.push(generalData, ...typeData);
+        data.push(generalData, ...typeData, ...functionWeightData);
 
         return true;
     }
 
     private async _processGeneralData(tree: Tree): Promise<GeneralData> {
-        const totalLines = tree.rootNode.endPosition.row + 1;
+        const lines = tree.rootNode.endPosition.row + 1;
+        const srcLines = tree.rootNode.text.split('\n');
+
+        const commentLineNums = new Set<number>();
+
+        for (const { node, name } of this._commentQuery.captures(tree.rootNode)) {
+            const { startPosition, endPosition } = node;
+
+            for (let lineNum = startPosition.row; lineNum <= endPosition.row; lineNum++) {
+                const line = srcLines[lineNum];
+
+                if (name === 'line_comment'
+                    || startPosition.row === endPosition.row
+                ) {
+                    const textBeforeComment = line.substring(0, startPosition.column).trim();
+                    const textAfterComment = line.substring(endPosition.column).trim();
+                    if(!textBeforeComment.length && !textAfterComment.length)
+                        commentLineNums.add(lineNum);
+                    continue;
+                }
+
+                if (lineNum === startPosition.row) {
+                    const textBeforeComment = line.substring(0, startPosition.column).trim();
+                    if(!textBeforeComment.length)
+                        commentLineNums.add(lineNum);
+                    continue;
+                }
+                
+                if (lineNum === endPosition.row) {
+                    const textAfterComment = line.substring(endPosition.column).trim();
+                    if(!textAfterComment.length)
+                        commentLineNums.add(lineNum);
+                    continue;
+                }
+                
+                commentLineNums.add(lineNum);
+            }
+        }
+
+        let linesOfCode = 0;
         let commentLines = 0;
 
-        for(const {node} of this._generalQuery.captures(tree.rootNode))
-            commentLines += node.endPosition.row - node.startPosition.row + 1;
+        for (let i = 0; i < srcLines.length; i++) {
+            const line = srcLines[i];
+            const trimmedLine = line.trim();
 
-        return new GeneralData(totalLines, commentLines);
+            if (!trimmedLine.length) continue;
+
+            if (commentLineNums.has(i)) {
+                const strippedComment = trimmedLine
+                                        .replace(/[*/\\#@!%^&()[\]{}<>_=+\-|;:,.'"~`]/g, '')
+                                        .trim();
+
+                if (strippedComment.length > 0) commentLines++;
+            }
+            else linesOfCode++;
+        }
+
+        return new GeneralData(lines, linesOfCode, commentLines);
     }
 
     private async _processTypeData(tree: Tree): Promise<TypeData[]> {
@@ -112,67 +145,38 @@ export class JavaAnalyzer extends Analyzer {
                     superTypes.add(child.text);
             });
 
-            const bodyNode = captures.find(c => c.name === kind)!.node;
-
-            types.push(new TypeData(
-                kind,
-                name,
-                modifiers,
-                superTypes,
-                ...this._processTypeDetail(bodyNode)
-            ));
+            types.push(new TypeData(kind, name, modifiers, superTypes));
         }
 
         return types;
     }
 
-    private _processTypeDetail(body: SyntaxNode): [
-        Map<string, VariableData>,
-        Map<string, FunctionData>
-    ] {
-        const fields = new Map<string, VariableData>();
-        const methods = new Map<string, FunctionData>();
+    private async _processFunctionWeights(tree: Tree): Promise<FunctionWeightData[]> {
+        const functionWeights: FunctionWeightData[] = [];
 
-        for (const { pattern, captures } of this._typeBodyQuery.matches(body)) {
-            switch (pattern) {
-                case 0: {
-                    const name = captures.find(c => c.name === 'field_name')!.node.text;
-                    const type = captures.find(c => c.name === 'field_type')!.node.text;
-                    const modifiers = new Set<string>(
-                        captures
-                        .find(c => c.name === 'field_modifiers')?.node.text
-                        .trim()
-                        .split(' ')
-                        .filter(m => m && !m.startsWith('@'))
-                    );
-                    fields.set(name, new VariableData(name, type, modifiers));
-                    break;
+        const srcLines = tree.rootNode.text.split('\n');
+
+        for (const { captures } of this._methodQuery.matches(tree.rootNode)) {
+            const name = captures.find(c => c.name === 'name')?.node.text ?? '';
+            const body = captures.find(c => c.name === 'method')?.node;
+            
+            if (body && name) {
+                const startLine = body.startPosition.row;
+                const endLine = body.endPosition.row;
+                
+                let methodLOC = 0;
+                for (let i = startLine; i <= endLine; i++) {
+                    const line = srcLines[i].trim();
+                    if (line.length
+                        && !line.startsWith('//')
+                        && !line.startsWith('/*')
+                        && !line.startsWith('*')) methodLOC++;
                 }
-                case 1: {
-                    const name = captures.find(c => c.name === 'method_name')!.node.text;
-                    const returnType = captures.find(c => c.name === 'return_type')!.node.text;
-                    const modifiers = new Set<string>(
-                        captures
-                        .find(c => c.name === 'method_modifiers')?.node.text
-                        .trim()
-                        .split(' ')
-                        .filter(m => m && !m.startsWith('@'))
-                    );
-                    const parameters = new Map<string, string>();
-                    const paramList = captures.find(c => c.name === 'param_list')!.node;
-                    for (const param of paramList.children)
-                        if (param.type === 'formal_parameter') {
-                            const paramType = param.childForFieldName('type')!.text;
-                            const paramName = param.childForFieldName('name')!.text;
-                            parameters.set(paramName, paramType);
-                        }
-                    methods.set(name, new FunctionData(name, returnType, modifiers, parameters));
-                    break;
-                }
-                default: continue;
+                
+                functionWeights.push(new FunctionWeightData(name, methodLOC));
             }
         }
 
-        return [fields, methods];
+        return functionWeights;
     }
 }

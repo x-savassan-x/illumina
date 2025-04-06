@@ -3,7 +3,8 @@ import {
     FolderNode,
     FileNode,
     GeneralData,
-    TypeData
+    TypeData,
+    FunctionWeightData
 } from "@core/index";
 
 
@@ -23,20 +24,27 @@ export abstract class MetricCalculator {
 export class GeneralMetric extends MetricCalculator {
     public async calculate(node: CacheNode, recalculated?: boolean): Promise<boolean> {
         const metricNode = node.metricNode;
-        let totalLines = 0;
+        let lines = 0;
+        let linesOfCode = 0;
         let commentLines = 0;
         let height = 0;
         let leafCount = 0;
         if (node instanceof FileNode) {
             const generalData = node.data.find(d => d instanceof GeneralData)!;
-            totalLines = generalData.totalLines;
+
+            lines = generalData.lines;
+            linesOfCode = generalData.linesOfCode;
+
             commentLines = generalData.commentLines;
             leafCount = 1;
         }
         else if (node instanceof FolderNode) {
             for (const child of node.children.values()) {
                 if (!recalculated) await this.calculate(child);
-                totalLines += child.metricNode.totalLines;
+
+                lines += child.metricNode.lines;
+                linesOfCode += child.metricNode.linesOfCode;
+
                 commentLines += child.metricNode.commentLines;
                 height = Math.max(height, child.metricNode.height + 1);
                 leafCount += child.metricNode.leafCount;
@@ -44,15 +52,19 @@ export class GeneralMetric extends MetricCalculator {
         }
 
         if (recalculated
-            && metricNode.totalLines === totalLines
+            && metricNode.lines === lines
+            && metricNode.linesOfCode === linesOfCode
             && metricNode.commentLines === commentLines
             && metricNode.height === height
             && metricNode.leafCount === leafCount
         ) return false;
 
-        metricNode.totalLines = totalLines;
+        metricNode.lines = lines;
+        metricNode.linesOfCode = linesOfCode;
+        const nonBlankLines = linesOfCode + commentLines;
+        metricNode.commentDensity = nonBlankLines ? commentLines / nonBlankLines : 0;
+
         metricNode.commentLines = commentLines;
-        metricNode.commentDensity = totalLines ? commentLines / totalLines : 0;
         metricNode.height = height;
         metricNode.leafCount = leafCount;
 
@@ -76,7 +88,7 @@ export class AbstractnessMetric extends MetricCalculator {
                 totalTypes += typesData.length;
                 abstractTypes += typesData.filter(
                     d => d.modifiers.has('abstract')
-                    || d.kind === 'interface'
+                        || d.kind === 'interface'
                 ).length;
             }
             else if (child instanceof FolderNode) {
@@ -100,25 +112,20 @@ export class AbstractnessMetric extends MetricCalculator {
 }
 
 
-export class MemberCountMetric extends MetricCalculator {
+export class WeightedMethodCountMetric extends MetricCalculator {
     public async calculate(node: CacheNode, recalculated?: boolean): Promise<boolean> {
         if (recalculated && node instanceof FolderNode) return false;
 
         if (node instanceof FileNode) {
             const metricNode = node.metricNode;
-            const typesData = node.data.filter(d => d instanceof TypeData);
-            metricNode.types = {};
-            typesData.forEach(data => {
-                metricNode.types[data.name] = {
-                    fieldCount: data.fields.size,
-                    methodCount: data.methods.size
-                };
-            });
+            const weightData = node.data.filter(d => d instanceof FunctionWeightData);
+            metricNode.weightedMethodCount = weightData.reduce((acc, d) => acc + d.weight, 0);
+
+            return true;
         }
         else if (node instanceof FolderNode) {
-            for (const child of node.children.values()) {
+            for (const child of node.children.values())
                 await this.calculate(child);
-            }
         }
 
         return true;

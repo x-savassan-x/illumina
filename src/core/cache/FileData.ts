@@ -3,7 +3,8 @@ export interface FileData {}
 
 export class GeneralData implements FileData {
     public constructor(
-        public totalLines: number,
+        public lines: number,
+        public linesOfCode: number,
         public commentLines: number
     ) { }
 }
@@ -36,5 +37,13 @@ export class FunctionData implements FileData {
         public returnType: string,
         public modifiers: Set<string> = new Set(),
         public parameters: Map<string, string> = new Map()
+    ) { }
+}
+
+
+export class FunctionWeightData implements FileData {
+    public constructor(
+        public name: string,
+        public weight: number
     ) { }
 }

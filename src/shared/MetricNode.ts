@@ -1,7 +1,9 @@
 export abstract class MetricNode {
-    public totalLines: number = 0;
-    public commentLines: number = 0;
-    public commentDensity: number = 0;
+    public lines = 0;
+    public linesOfCode = 0;
+    public commentDensity = 0;
+
+    public commentLines = 0;
     public height = 0;
     public leafCount = 1;
 
@@ -12,10 +14,11 @@ export abstract class MetricNode {
 
 
 export class FolderMetricNode extends MetricNode {
+    public abstractness = 0;
+
     public children: Record<string, MetricNode> = {};
-    public totalTypes: number = 0;
-    public abstractTypes: number = 0;
-    public abstractness: number = 0;
+    public totalTypes = 0;
+    public abstractTypes = 0;
 
     public addChild(name: string, node: MetricNode): void {
         this.children[name] = node;
@@ -38,11 +41,5 @@ export class FolderMetricNode extends MetricNode {
 
 
 export class FileMetricNode extends MetricNode {
-    public types: Record<string, TypeMetric> = {};
+    public weightedMethodCount = 0;
 }
-
-
-type TypeMetric = {
-    fieldCount: number,
-    methodCount: number
-};

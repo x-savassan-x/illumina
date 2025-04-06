@@ -3,14 +3,8 @@ import { JavaAnalyzer } from './analyzers/JavaAnalyzer';
 
 
 export { Analyzer };
-export { CacheNode, FolderNode, FileNode} from './cache/CacheNode';
-export {
-    FileData,
-    GeneralData,
-    TypeData,
-    VariableData,
-    FunctionData
-} from './cache/FileData';
+export * from './cache/CacheNode';
+export * from './cache/FileData';
 export { MetricsProcessor } from './metrics/MetricProcessor';
 
 
