@@ -1,8 +1,8 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { FolderMetricNode } from '@shared/index';
 import { SceneManager } from './SceneManager';
-import { CityBuilder } from './CityBuilder';
-import { Raycaster, Vector2, Object3D } from 'three';
+import { CityBuilder } from './builder';
+import { Raycaster, Vector2, Mesh } from 'three';
 import './VizScreen.css';
 
 
@@ -24,13 +24,12 @@ export const VizScreen: React.FC<{ data: FolderMetricNode }> = ({ data }) => {
     const sceneManager = new SceneManager(container);
     sceneManagerRef.current = sceneManager;
 
-    cityBuilderRef.current = new CityBuilder(sceneManager);
+    cityBuilderRef.current = new CityBuilder(
+      sceneManager.scene,
+      (size: number) => sceneManager.update(size)
+    );
 
     sceneManager.startRendering();
-
-    const raycaster = raycasterRef.current;
-    raycaster.params.Line.threshold = 0.1;
-    raycaster.params.Mesh.threshold = 0.1;
 
     container.addEventListener('mousemove', handleMouseMove);
     container.addEventListener('click', handleClick);
@@ -58,7 +57,7 @@ export const VizScreen: React.FC<{ data: FolderMetricNode }> = ({ data }) => {
 
   const handleClick = (event: MouseEvent) => {
     const intersectedObject = getIntersectedObject(event);
-    cityBuilderRef.current?.selectObject(intersectedObject);
+    cityBuilderRef.current?.selectObject(intersectedObject as Mesh);
   };
 
   const handleDoubleClick = (event: MouseEvent) => {
@@ -66,7 +65,7 @@ export const VizScreen: React.FC<{ data: FolderMetricNode }> = ({ data }) => {
     intersectedObject?.userData?.onDoubleClick?.();
   };
 
-  const getIntersectedObject = (event: MouseEvent): Object3D | undefined => {
+  const getIntersectedObject = (event: MouseEvent): Mesh | undefined => {
     const container = containerRef.current;
     const sceneManager = sceneManagerRef.current;
     const cityBuilder = cityBuilderRef.current;
@@ -84,7 +83,7 @@ export const VizScreen: React.FC<{ data: FolderMetricNode }> = ({ data }) => {
     raycaster.setFromCamera(mouse, sceneManager.camera);
     const intersects = raycaster.intersectObjects(cityBuilder.collidableObjects, false);
 
-    return intersects[0]?.object;
+    return intersects[0]?.object as Mesh;
   };
 
   return (
