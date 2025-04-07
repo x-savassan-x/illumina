@@ -5,30 +5,31 @@ import { Tree, Edit } from "tree-sitter";
 import { Operation, Change } from "./Change";
 import { Debouncer } from "./Debouncer";
 import { StaticVizEngine } from "./StaticVizEngine";
-import { CacheNode, FolderNode, FileNode, Analyzer, getAnalyzer } from "@core/index";
+import { CacheNode, FolderNode, FileNode, getAnalyzer } from "@core/index";
 import { ConfigSection, getConfigValue, handleConfigChanges } from "@ext/config";
 import { Logger } from "@ext/Logger";
 
 
 export class CacheManager {
-    public root: FolderNode;
+    public root = new FolderNode(getConfigValue<string>(ConfigSection.SourceDirectory));
     public static readonly isActive = (): boolean => !!this._instance;
     private static _instance: CacheManager | undefined;
     private readonly _debouncer = new Debouncer();
     private readonly _processingNodes = new Map<FileNode, Promise<void>>();
     private readonly _vizEngine = StaticVizEngine.instance;
     private readonly _disposable: Disposable;
-    private _cache: LRUCache<FileNode, Tree>;
+    private _cache = this._getNewCache();
     private _pendingChanges: Change[] = [];
     private _currentChanges: Change[] = [];
-    private _analyzer: Analyzer;
+    private _analyzer = getAnalyzer(getConfigValue<string>(ConfigSection.SourceLanguage));
 
     private constructor() {
-        this.root = new FolderNode(getConfigValue<string>(ConfigSection.SourceDirectory));
-        this._cache = this._getNewCache();
-        this._analyzer = getAnalyzer(getConfigValue<string>(ConfigSection.SourceLanguage));
         this._disposable = workspace.onDidChangeConfiguration(e => handleConfigChanges(e, [
-            [[ConfigSection.SourceDirectory, ConfigSection.SourceLanguage], (): void => {
+            [[
+                ConfigSection.SourceDirectory,
+                ConfigSection.SourceLanguage,
+                ConfigSection.IgnoredFiles
+            ], (): void => {
                 this.root = new FolderNode(getConfigValue<string>(ConfigSection.SourceDirectory));
                 this._cache.clear();
             }],

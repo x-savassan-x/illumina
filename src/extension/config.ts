@@ -6,6 +6,7 @@ export enum ConfigSection {
     SourceLanguage = 'sourceLanguage',
     MaxCacheSize = 'maxCacheSize',
     DebounceInterval = 'debounceInterval',
+    IgnoredFiles = 'ignoredFiles'
 }
 
 

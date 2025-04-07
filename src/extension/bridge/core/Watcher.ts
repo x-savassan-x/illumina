@@ -14,6 +14,7 @@ import { ConfigSection, handleConfigChanges, getConfigValue } from "@ext/config"
 export class Watcher {
     private static _instance: Watcher | undefined;
     private readonly _disposable: Disposable;
+    private _ignoredFiles = new Set(getConfigValue<string[]>(ConfigSection.IgnoredFiles));
     private _srcRoot: string;
     private _srcLang: string;
 
@@ -34,6 +35,9 @@ export class Watcher {
                 }],
                 [[ConfigSection.SourceLanguage], (): void => {
                     this._srcLang = getConfigValue<string>(ConfigSection.SourceLanguage);
+                }],
+                [[ConfigSection.IgnoredFiles], (): void => {
+                    this._ignoredFiles = new Set(getConfigValue<string[]>(ConfigSection.IgnoredFiles));
                 }]
             ]))
         );
@@ -152,6 +156,10 @@ export class Watcher {
 
         const ext = extname(uri.path);
         if (ext && ext !== this._srcLang) // is file but not source file
+            return [false, ''];
+
+        const fileName = basename(uri.path);
+        if (this._ignoredFiles.has(fileName)) // ignored file
             return [false, ''];
 
         return [true, relPath];

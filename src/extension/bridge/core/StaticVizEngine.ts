@@ -9,7 +9,7 @@ import {
     EventEmitter,
     Event
 } from "vscode";
-import { relative } from "path";
+import { basename, relative } from "path";
 import { CacheManager } from "@ext/bridge";
 import { ConfigSection, getConfigValue } from "@ext/config";
 import { MetricsProcessor, CacheNode, FolderNode } from "@core/index";
@@ -104,6 +104,10 @@ export class StaticVizEngine {
 
         const pattern = new RelativePattern(folder, `${sourceDir}/**/*${srcLang}`);
         const uris = await workspace.findFiles(pattern);
-        return uris.map(uri => ([relative(srcRoot, uri.path), uri]));
+
+        const ignoredFiles = new Set(getConfigValue<string[]>(ConfigSection.IgnoredFiles));
+
+        return uris.filter(uri => !ignoredFiles.has(basename(uri.path)))
+                    .map(uri => ([relative(srcRoot, uri.path), uri]));
     }
 }
