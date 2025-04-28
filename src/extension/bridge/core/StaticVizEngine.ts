@@ -1,13 +1,13 @@
 import {
     window,
     workspace,
+    Disposable,
     Progress,
     ProgressLocation,
     CancellationToken,
     Uri,
     RelativePattern,
-    EventEmitter,
-    Event
+    EventEmitter
 } from "vscode";
 import { basename, relative } from "path";
 import { CacheManager } from "@ext/bridge";
@@ -17,15 +17,12 @@ import { Logger } from "@ext/Logger";
 
 
 export class StaticVizEngine {
-    public readonly onUpdate: Event<void>;
+    public readonly updateEmitter = new EventEmitter<void>();
     public isActive: boolean = false;
-    private static _instance: StaticVizEngine;
-    private readonly _metricsProcessor: MetricsProcessor = new MetricsProcessor();
-    private readonly _updateEmitter = new EventEmitter<void>();
-
-    private constructor() {
-        this.onUpdate = this._updateEmitter.event;
-    }
+    private static _instance: StaticVizEngine | undefined;
+    private readonly _cacheManager = CacheManager.instance;
+    private readonly _metricsProcessor = new MetricsProcessor();
+    private _disposable = Disposable.from();
 
     public static get instance(): StaticVizEngine {
         this._instance ??= new StaticVizEngine();
@@ -33,10 +30,13 @@ export class StaticVizEngine {
     }
 
     public async activate(): Promise<void> {
-        if (!CacheManager.isActive()) throw new Error('Cache system is not initialized');
         if (this.isActive) return;
 
-        await CacheManager.instance.waitProcessingNodes();
+        await this._cacheManager.waitProcessingNodes();
+
+        this._disposable = this._cacheManager.updateEmitter.event(
+            ([changedNode, affectedParentNode]) => this._update(changedNode, affectedParentNode)
+        );
 
         await window.withProgress({
             title: "Initializing visualization",
@@ -45,23 +45,23 @@ export class StaticVizEngine {
         }, async (progress, token) => await this._initViz(progress, token));
 
         this.isActive = true;
+
         Logger.info('Visualization is activated');
     }
 
     public async deactivate(): Promise<void> {
         if (!this.isActive) return;
-        await CacheManager.instance.waitProcessingNodes();
+        await this._cacheManager.waitProcessingNodes();
+        this._disposable.dispose();
         this.isActive = false;
+
         Logger.info('Visualization is deactivated');
     }
 
-    public update(changedNode?: CacheNode, affectedParentNode?: FolderNode): void {
-        if (!this.isActive) return;
-        if (!changedNode) this._updateEmitter.fire();
-        else
-            this._metricsProcessor.recalculate(changedNode, affectedParentNode)
-            .then(() => this._updateEmitter.fire())
-            .catch(error => Logger.error(error, 'StaticVizEngine'));
+    public dispose(): void {
+        this.updateEmitter.dispose();
+        this._disposable.dispose();
+        StaticVizEngine._instance = undefined;
     }
 
     private async _initViz(
@@ -72,7 +72,6 @@ export class StaticVizEngine {
         if (token.isCancellationRequested)
             throw new Error('Visualization initialization was cancelled');
 
-        const cacheManager = CacheManager.instance;
         const total = sourceFiles.length;
         const batchSize = 10;
         let processed = 0;
@@ -82,8 +81,7 @@ export class StaticVizEngine {
                 throw new Error('Visualization initialization was cancelled');
 
             const batch = sourceFiles.slice(i, i + batchSize);
-            const tasks = batch.map(file => cacheManager.ensureNode(file));
-            await Promise.all(tasks);
+            await Promise.all(batch.map(file => this._cacheManager.ensureNode(file)));
             processed += batch.length;
 
             progress.report({
@@ -92,8 +90,17 @@ export class StaticVizEngine {
             });
         }
 
-        await cacheManager.waitProcessingNodes();
-        await this._metricsProcessor.calculate(cacheManager.root);
+        await this._cacheManager.waitProcessingNodes();
+        await this._metricsProcessor.calculate(this._cacheManager.cacheRoot);
+    }
+
+    private _update(changedNode?: CacheNode, affectedParentNode?: FolderNode): void {
+        if (!this.isActive) return;
+        if (!changedNode) this.updateEmitter.fire();
+        else
+            this._metricsProcessor.recalculate(changedNode, affectedParentNode)
+            .then(() => this.updateEmitter.fire())
+            .catch(error => Logger.error(error, 'StaticVizEngine'));
     }
 
     private async _getSourceFiles(): Promise<[string, Uri][]> {

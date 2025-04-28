@@ -1,7 +1,6 @@
 import { window, WebviewPanel, Disposable, Uri, ViewColumn } from "vscode";
 import { readFileSync } from "fs";
-import { StaticVizEngine } from "../core/StaticVizEngine";
-import { CacheManager } from "../core/CacheManager";
+import { CacheManager, StaticVizEngine } from "@ext/bridge";
 import { LogLevel, LogData, Message } from "@shared/index";
 import { Logger } from "@ext/Logger";
 
@@ -18,7 +17,7 @@ export class VizPanel {
 
         this._disposable = Disposable.from(
             this._panel.onDidDispose(async () => await this._dispose()),
-            this._vizEngine.onUpdate(() => this._updateUI()),
+            this._vizEngine.updateEmitter.event(() => this._updateUI()),
             this._panel.webview.onDidReceiveMessage(message => this._handleMessage(message))
         );
     }
@@ -37,6 +36,10 @@ export class VizPanel {
         });
 
         this._currentPanel = new VizPanel(panel, extensionUri);
+    }
+
+    public static dispose(): void {
+        this._currentPanel?._panel.dispose();
     }
 
     private _getWebviewContent(extensionUri: Uri): string {
@@ -63,7 +66,7 @@ export class VizPanel {
     private _updateUI(): void {
         this._panel.webview.postMessage({
             command: 'update',
-            data: CacheManager.instance.root.metricNode
+            data: CacheManager.instance.cacheRoot.metricNode
         });
     }
 

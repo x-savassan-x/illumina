@@ -50,15 +50,9 @@ export class FolderNode extends CacheNode<FolderMetricNode> {
 
 
 export class FileNode extends CacheNode<FileMetricNode> {
-    public updated: boolean = false;
     public readonly data: FileData[] = [];
 
     public constructor(name: string, parent?: FolderNode) {
         super(name, new FileMetricNode(name), parent);
-    }
-
-    public clear(): void {
-        this.updated = false;
-        this.data.length = 0;
     }
 }
