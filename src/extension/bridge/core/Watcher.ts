@@ -8,6 +8,7 @@ import {
 } from "vscode";
 import { extname, relative, basename, dirname } from "path";
 import { Operation, Change } from "./Change";
+import { LRUCache } from "./LRUCache";
 import { Debouncer } from "./Debouncer";
 import { ConfigSection, handleConfigChanges, getConfigValue } from "@ext/config";
 import { Logger } from "@ext/Logger";
@@ -17,24 +18,28 @@ export class Watcher {
     public changesHandler: (changes: Change[]) => void = () => { };
     private static _instance: Watcher | undefined;
     private readonly _debouncer = new Debouncer();
+    private readonly _lruCache = new LRUCache<string, [boolean, string]>();
     private readonly _disposable: Disposable;
-    private _srcRoot = getConfigValue<string>(ConfigSection.SourceDirectory);
+    private _srcRoot = this._getSrcRoot();
     private _srcLang = getConfigValue<string>(ConfigSection.SourceLanguage);
     private _ignoredFiles = new Set(getConfigValue<string[]>(ConfigSection.IgnoredFiles));
     private _pendingChanges: Change[] = [];
     private _currentChanges: Change[] = [];
 
     private constructor() {
-        this._srcRoot = `${this._getWorkspaceRoot()}/${this._srcRoot}`;
-
         this._disposable = Disposable.from(
             workspace.onDidDeleteFiles(e => this._handleDeletion(e)),
             workspace.onDidChangeTextDocument(e => this._handleModification(e)),
             workspace.onDidRenameFiles(e => this._handleRenaming(e)),
             workspace.onDidChangeConfiguration(e => handleConfigChanges(e, [
+                [[
+                    ConfigSection.SourceDirectory,
+                    ConfigSection.SourceLanguage
+                ], (): void => {
+                    this._lruCache.data.clear();
+                }],
                 [[ConfigSection.SourceDirectory], (): void => {
-                    const srcDir = getConfigValue<string>(ConfigSection.SourceDirectory);
-                    this._srcRoot = `${this._getWorkspaceRoot()}/${srcDir}`;
+                    this._srcRoot = this._getSrcRoot();
                 }],
                 [[ConfigSection.SourceLanguage], (): void => {
                     this._srcLang = getConfigValue<string>(ConfigSection.SourceLanguage);
@@ -56,6 +61,7 @@ export class Watcher {
     public dispose(): void {
         this._disposable.dispose();
         this._debouncer.dispose();
+        this._lruCache.dispose();
         Watcher._instance = undefined;
     }
 
@@ -150,6 +156,15 @@ export class Watcher {
     }
 
     private _checkScope(uri: Uri): [boolean, string] {
+        let result = this._lruCache.data.get(uri.path);
+        if (result) return result;
+
+        result = this._checkScopeNewUri(uri);
+        this._lruCache.data.set(uri.path, result);
+        return result;
+    }
+
+    private _checkScopeNewUri(uri: Uri): [boolean, string] {
         if (uri.scheme !== 'file')
             return [false, ''];
 
@@ -177,7 +192,7 @@ export class Watcher {
         this._debouncer.schedule(() => this._processChanges());
     }
 
-        private _tryMergeChange(newChange: Change): boolean {
+    private _tryMergeChange(newChange: Change): boolean {
         const lastChange = this._pendingChanges.at(-1);
 
         if (!lastChange || // no pending change
@@ -242,8 +257,9 @@ export class Watcher {
             this._debouncer.schedule(() => this._processChanges());
     }
 
-    private _getWorkspaceRoot(): string {
-        const folder = workspace.workspaceFolders![0];
-        return folder.uri.path;
+    private _getSrcRoot(): string {
+        const workspaceRoot = workspace.workspaceFolders![0].uri.path;
+        const srcDir = getConfigValue<string>(ConfigSection.SourceDirectory);
+        return `${workspaceRoot}/${srcDir}`;
     }
 }

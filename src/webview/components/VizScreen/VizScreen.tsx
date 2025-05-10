@@ -1,8 +1,9 @@
 import React, { useRef, useEffect, useState } from 'react';
+import { Raycaster, Vector2, Mesh } from 'three';
 import { FolderMetricNode } from '@shared/index';
 import { SceneManager } from './SceneManager';
 import { CityBuilder } from './builder';
-import { Raycaster, Vector2, Mesh } from 'three';
+import { getVSCodeAPI } from '../../vscode-api';
 import './VizScreen.css';
 
 
@@ -21,6 +22,8 @@ export const VizScreen: React.FC<{ data: FolderMetricNode }> = ({ data }) => {
     const container = containerRef.current;
     if (!container) return;
 
+    const vscode = getVSCodeAPI();
+
     const sceneManager = new SceneManager(container);
     sceneManagerRef.current = sceneManager;
 
@@ -28,6 +31,13 @@ export const VizScreen: React.FC<{ data: FolderMetricNode }> = ({ data }) => {
       sceneManager.scene,
       (size: number) => sceneManager.update(size)
     );
+
+    cityBuilderRef.current.openFile = (filePath: string) => {
+      vscode.postMessage({
+        command: 'openFile',
+        data: filePath,
+      });
+    }
 
     sceneManager.startRendering();
 

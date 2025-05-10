@@ -17,6 +17,7 @@ interface TreemapData {
 
 export class CityBuilder {
     public collidableObjects: Mesh[] = [];
+    public openFile: ((filePath: string) => void) | undefined;
     private readonly _groundBuilder: GroundBuilder = new GroundBuilder();
     private readonly _buildingBuilder: BuildingBuilder = new BuildingBuilder();
     private readonly _expandedFolders: Set<string> = new Set();
@@ -50,9 +51,8 @@ export class CityBuilder {
     }
 
     private _setEmissiveColor(mesh: Mesh | undefined, value: number): void {
-        if (mesh && mesh.material instanceof MeshStandardMaterial) {
+        if (mesh && mesh.material instanceof MeshStandardMaterial)
             mesh.material.emissive = new Color(value);
-        }
     }
 
     private _buildCity(hasNewData: boolean = true): void {
@@ -164,7 +164,6 @@ export class CityBuilder {
                 this._cityGroup?.add(ground);
             }
 
-            console.log(name);
             const building = this._buildingBuilder.build(
                 new Area(x0, y0, x1, y1 - (isFolder ? this._BOTTOM_PADDING : 0)),
                 this._size,
@@ -175,7 +174,9 @@ export class CityBuilder {
                 isFolder,
                 {
                     name,
-                    onDoubleClick: isFolder ? ((): void => this._toggleFolder(path)) : undefined
+                    onDoubleClick: isFolder
+                        ? ((): void => this._toggleFolder(path))
+                        : ((): void => this.openFile?.(path))
                 }
             );
 

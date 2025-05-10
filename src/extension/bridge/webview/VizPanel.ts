@@ -1,5 +1,6 @@
-import { window, WebviewPanel, Disposable, Uri, ViewColumn } from "vscode";
+import { workspace, window, WebviewPanel, Disposable, Uri, ViewColumn } from "vscode";
 import { readFileSync } from "fs";
+import { join } from "path";
 import { CacheManager, StaticVizEngine } from "@ext/bridge";
 import { LogLevel, LogData, Message } from "@shared/index";
 import { Logger } from "@ext/Logger";
@@ -32,7 +33,8 @@ export class VizPanel {
 
         const panel = window.createWebviewPanel('illumina', 'Illumina', column, {
             enableScripts: true,
-            localResourceRoots: [extensionUri]
+            localResourceRoots: [extensionUri],
+            retainContextWhenHidden: true // temporary solution as this increases memory usage
         });
 
         this._currentPanel = new VizPanel(panel, extensionUri);
@@ -63,16 +65,10 @@ export class VizPanel {
         await this._vizEngine.deactivate();
     }
 
-    private _updateUI(): void {
-        this._panel.webview.postMessage({
-            command: 'update',
-            data: CacheManager.instance.cacheRoot.metricNode
-        });
-    }
-
     private _handleMessage(message: Message): void {
         switch (message.command) {
             case 'ready': this._updateUI(); break;
+            case 'openFile': void this._openFile(message.data! as string); break;
             case 'log': {
                 const data = message.data as { level: LogLevel, content: string, metadata?: LogData };
                 const source = 'Webview';
@@ -85,6 +81,35 @@ export class VizPanel {
                 break;
             }
             default: Logger.error(`Unknown message command: ${message.command}`);
+        }
+    }
+
+    private _updateUI(): void {
+        this._panel.webview.postMessage({
+            command: 'update',
+            data: CacheManager.instance.cacheRoot.metricNode
+        });
+    }
+
+    private async _openFile(filePath: string): Promise<void> {
+        const workspaceRoot = workspace.workspaceFolders![0].uri.path;
+        const fullPath = join(workspaceRoot, filePath);
+        
+        try {
+            const uri = Uri.file(fullPath);
+            const document = await workspace.openTextDocument(uri);
+            
+            await window.showTextDocument(document, {
+                viewColumn: ViewColumn.One,
+                preserveFocus: false
+            });
+
+            this._panel.reveal(ViewColumn.Beside);
+        }
+        catch (error) {
+            Logger.error(`Failed to open file: ${filePath}`, 'VizPanel', {
+                error: error instanceof Error ? error.message : String(error)
+            });
         }
     }
 }

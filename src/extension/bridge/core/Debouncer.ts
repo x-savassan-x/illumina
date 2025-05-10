@@ -3,14 +3,15 @@ import { ConfigSection, getConfigValue, handleConfigChanges } from "@ext/config"
 
 export class Debouncer {
     private readonly _disposable: Disposable;
-    private _timeoutId?: NodeJS.Timeout | undefined;
-    private _interval: number;
+    private _timeoutId: NodeJS.Timeout | undefined;
+    private _timeoutTask: (() => void) | undefined;
+    private _interval = getConfigValue<number>(ConfigSection.DebounceInterval);
 
     public constructor() {
-        this._interval = getConfigValue<number>(ConfigSection.DebounceInterval);
         this._disposable = workspace.onDidChangeConfiguration(e => handleConfigChanges(e, [
             [[ConfigSection.DebounceInterval], (): void => {
                 this._clear();
+                this._timeoutTask?.();
                 this._interval = getConfigValue<number>(ConfigSection.DebounceInterval);
             }]
         ]));
@@ -18,9 +19,10 @@ export class Debouncer {
 
     public schedule(task: () => void): void {
         this._clear();
+        this._timeoutTask = task;
         this._timeoutId = setTimeout(() => {
-            task();
             this._timeoutId = undefined;
+            task();
         }, this._interval);
     }
 
@@ -30,9 +32,7 @@ export class Debouncer {
     }
 
     private _clear(): void {
-        if (this._timeoutId) {
-            clearTimeout(this._timeoutId);
-            this._timeoutId = undefined;
-        }
+        clearTimeout(this._timeoutId);
+        this._timeoutId = undefined;
     }
 }

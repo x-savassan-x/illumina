@@ -1,7 +1,7 @@
 import { workspace, Disposable, Uri, EventEmitter } from "vscode";
 import { sep } from "path";
-import { LRUCache } from "lru-cache";
 import { Tree, Edit } from "tree-sitter";
+import { LRUCache } from "./LRUCache";
 import { Operation, Change } from "./Change";
 import { CacheNode, FolderNode, FileNode, getAnalyzer } from "@core/index";
 import { ConfigSection, getConfigValue, handleConfigChanges } from "@ext/config";
@@ -13,9 +13,9 @@ export class CacheManager {
     public readonly updateEmitter = new EventEmitter<[CacheNode | undefined, FolderNode | undefined]>();
     public cacheRoot = new FolderNode(getConfigValue<string>(ConfigSection.SourceDirectory));
     private static _instance: CacheManager | undefined;
+    private readonly _lruCache = new LRUCache<FileNode, Tree>();
     private readonly _processingNodes = new Map<FileNode, Promise<void>>();
     private readonly _disposable: Disposable;
-    private _lruCache = this._getNewLRUCache();
     private _analyzer = getAnalyzer(getConfigValue<string>(ConfigSection.SourceLanguage));
 
     private constructor() {
@@ -26,15 +26,10 @@ export class CacheManager {
                 ConfigSection.IgnoredFiles
             ], (): void => {
                 this.cacheRoot = new FolderNode(getConfigValue<string>(ConfigSection.SourceDirectory));
-                this._lruCache.clear();
+                this._lruCache.data.clear();
             }],
             [[ConfigSection.SourceLanguage], (): void => {
                 this._analyzer = getAnalyzer(getConfigValue<string>(ConfigSection.SourceLanguage));
-            }],
-            [[ConfigSection.MaxCacheSize], (): void => {
-                const cache = this._getNewLRUCache();
-                this._lruCache.forEach((tree, node) => cache.set(node, tree));
-                this._lruCache = cache;
             }]
         ]));
 
@@ -82,7 +77,8 @@ export class CacheManager {
         const content = new TextDecoder().decode(bytes);
         const tree = this._analyzer.getTree(content);
 
-        if (this._lruCache.size < this._lruCache.max) this._lruCache.set(node, tree);
+        if (this._lruCache.data.size < this._lruCache.data.max)
+            this._lruCache.data.set(node, tree);
         this._processNode(node, tree);
     }
 
@@ -93,11 +89,12 @@ export class CacheManager {
     public dispose(): void {
         this.updateEmitter.dispose();
         this._disposable.dispose();
+        this._lruCache.dispose();
         CacheManager._instance = undefined;
     }
 
     private _delete(path: string): [boolean, CacheNode | undefined, FolderNode | undefined] {
-        Logger.info(`Delete ${path}`);
+        Logger.debug(`Delete ${path}`, 'CacheManager');
         const node = this._findNode(path);
         const parent = node?.parent;
         node?.delete();
@@ -105,28 +102,28 @@ export class CacheManager {
     }
 
     private _modify(path: string, content: string, edits: Edit[]): void {
-        Logger.info(`Modify ${path}`);
+        Logger.debug(`Modify ${path}`, 'CacheManager', { edits });
         // if node exists in cache, 50/50 has lru cache
         // if not, definitely not in lru cache and need to create new AST
         const node = this._findNode(path) as FileNode ?? this._createFileNode(path);
-        const oldTree = this._lruCache.get(node);
+        const oldTree = this._lruCache.data.get(node);
         const tree = oldTree ?
             this._analyzer.updateTree(oldTree, edits, content) :
             this._analyzer.getTree(content);
 
-        this._lruCache.set(node, tree);
+        this._lruCache.data.set(node, tree);
         this._processNode(node, tree);
     }
 
     private _rename(path: string, newName: string): boolean {
-        Logger.info(`Rename ${path} to ${newName}`);
+        Logger.debug(`Rename ${path} to ${newName}`, 'CacheManager');
         const node = this._findNode(path);
         node?.setName(newName);
         return !!node;
     }
 
     private _move(path: string, newDir: string): [boolean, CacheNode | undefined, FolderNode | undefined] {
-        Logger.info(`Move ${path} to ${newDir}`);
+        Logger.debug(`Move ${path} to ${newDir}`, 'CacheManager');
         const node = this._findNode(path);
         const parent = node?.parent;
         node?.setParent(this._createFolderNode(newDir.split(sep)));
@@ -141,15 +138,19 @@ export class CacheManager {
         const last = parts.pop()!;
 
         for (const part of parts) {
-            const next = current.children.get(part) as FolderNode;
-            if (!next) return;
-            current = next;
+            current = current.children.get(part) as FolderNode;
+            if (!current) return;
         }
 
-        return current.children.get(last);
+        const result = current.children.get(last);
+
+        if (result) Logger.debug(`Found node of ${path}`, 'CacheManager');
+
+        return result;
     }
 
     private _createFileNode(path: string): FileNode {
+        Logger.debug(`Create node for ${path}`, 'CacheManager');
         const parts = path.split(sep);
         const name = parts.pop()!;
         const parent = this._createFolderNode(parts);
@@ -181,11 +182,5 @@ export class CacheManager {
             });
 
         this._processingNodes.set(node, process);
-    }
-
-    private _getNewLRUCache(): LRUCache<FileNode, Tree> {
-        return new LRUCache<FileNode, Tree>({
-            max: getConfigValue<number>(ConfigSection.MaxCacheSize)
-        });
     }
 }
