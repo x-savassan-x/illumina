@@ -13,6 +13,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      '@webview': resolve(__dirname, 'src', 'webview'),
       '@shared': resolve(__dirname, 'src', 'shared')
     }
   }

@@ -36,7 +36,7 @@ export class MetricsProcessor {
     }
 
     private _findEndpoint(parent1?: FolderNode, parent2?: FolderNode): FolderNode | undefined {
-        if(!parent1 || !parent2 || parent1 === parent2) return;
+        if (!parent1 || !parent2 || parent1 === parent2) return;
 
         const path1: Set<FolderNode> = new Set();
         let current: FolderNode | undefined = parent1;

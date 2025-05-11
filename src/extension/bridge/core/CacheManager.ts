@@ -94,7 +94,6 @@ export class CacheManager {
     }
 
     private _delete(path: string): [boolean, CacheNode | undefined, FolderNode | undefined] {
-        Logger.debug(`Delete ${path}`, 'CacheManager');
         const node = this._findNode(path);
         const parent = node?.parent;
         node?.delete();
@@ -102,7 +101,6 @@ export class CacheManager {
     }
 
     private _modify(path: string, content: string, edits: Edit[]): void {
-        Logger.debug(`Modify ${path}`, 'CacheManager', { edits });
         // if node exists in cache, 50/50 has lru cache
         // if not, definitely not in lru cache and need to create new AST
         const node = this._findNode(path) as FileNode ?? this._createFileNode(path);
@@ -116,14 +114,12 @@ export class CacheManager {
     }
 
     private _rename(path: string, newName: string): boolean {
-        Logger.debug(`Rename ${path} to ${newName}`, 'CacheManager');
         const node = this._findNode(path);
         node?.setName(newName);
         return !!node;
     }
 
     private _move(path: string, newDir: string): [boolean, CacheNode | undefined, FolderNode | undefined] {
-        Logger.debug(`Move ${path} to ${newDir}`, 'CacheManager');
         const node = this._findNode(path);
         const parent = node?.parent;
         node?.setParent(this._createFolderNode(newDir.split(sep)));
@@ -142,15 +138,10 @@ export class CacheManager {
             if (!current) return;
         }
 
-        const result = current.children.get(last);
-
-        if (result) Logger.debug(`Found node of ${path}`, 'CacheManager');
-
-        return result;
+        return current.children.get(last);
     }
 
     private _createFileNode(path: string): FileNode {
-        Logger.debug(`Create node for ${path}`, 'CacheManager');
         const parts = path.split(sep);
         const name = parts.pop()!;
         const parent = this._createFolderNode(parts);

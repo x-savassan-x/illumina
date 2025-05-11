@@ -12,6 +12,7 @@
         "react-dom"
       ],
       "paths": {
+        "@webview/*": ["./src/webview/*"],
 			  "@shared/*": ["./src/shared/*"]
 		  }
     },

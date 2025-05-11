@@ -3,7 +3,7 @@ import { Raycaster, Vector2, Mesh } from 'three';
 import { FolderMetricNode } from '@shared/index';
 import { SceneManager } from './SceneManager';
 import { CityBuilder } from './builder';
-import { getVSCodeAPI } from '../../vscode-api';
+import { getVSCodeAPI } from '@webview/vscode-api';
 import './VizScreen.css';
 
 

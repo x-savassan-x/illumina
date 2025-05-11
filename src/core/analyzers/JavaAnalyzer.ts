@@ -10,10 +10,6 @@ import {
 
 
 export class JavaAnalyzer extends Analyzer {
-    private readonly _commentQuery: Query = new Query(Java, `
-        (line_comment) @line_comment
-        (block_comment) @block_comment
-    `);
     private readonly _typeDeclQuery: Query = new Query(Java, `
         (class_declaration
             (modifiers)? @type_modifiers
@@ -54,65 +50,31 @@ export class JavaAnalyzer extends Analyzer {
     }
 
     private async _processGeneralData(tree: Tree): Promise<GeneralData> {
-        const lines = tree.rootNode.endPosition.row + 1;
-        const srcLines = tree.rootNode.text.split('\n');
-
-        const commentLineNums = new Set<number>();
-
-        for (const { node, name } of this._commentQuery.captures(tree.rootNode)) {
-            const { startPosition, endPosition } = node;
-
-            for (let lineNum = startPosition.row; lineNum <= endPosition.row; lineNum++) {
-                const line = srcLines[lineNum];
-
-                if (name === 'line_comment'
-                    || startPosition.row === endPosition.row
-                ) {
-                    const textBeforeComment = line.substring(0, startPosition.column).trim();
-                    const textAfterComment = line.substring(endPosition.column).trim();
-                    if(!textBeforeComment.length && !textAfterComment.length)
-                        commentLineNums.add(lineNum);
-                    continue;
-                }
-
-                if (lineNum === startPosition.row) {
-                    const textBeforeComment = line.substring(0, startPosition.column).trim();
-                    if(!textBeforeComment.length)
-                        commentLineNums.add(lineNum);
-                    continue;
-                }
-                
-                if (lineNum === endPosition.row) {
-                    const textAfterComment = line.substring(endPosition.column).trim();
-                    if(!textAfterComment.length)
-                        commentLineNums.add(lineNum);
-                    continue;
-                }
-                
-                commentLineNums.add(lineNum);
-            }
-        }
-
+        const totalLines = tree.rootNode.endPosition.row + 1;
         let linesOfCode = 0;
         let commentLines = 0;
 
-        for (let i = 0; i < srcLines.length; i++) {
-            const line = srcLines[i];
+        const srcLines = tree.rootNode.text.split('\n');
+
+        for (const line of srcLines) {
             const trimmedLine = line.trim();
 
             if (!trimmedLine.length) continue;
 
-            if (commentLineNums.has(i)) {
+            if (trimmedLine.startsWith('//')
+                ||trimmedLine.startsWith('/*')
+                ||trimmedLine.startsWith('*')
+            ) {
                 const strippedComment = trimmedLine
                                         .replace(/[*/\\#@!%^&()[\]{}<>_=+\-|;:,.'"~`]/g, '')
                                         .trim();
 
-                if (strippedComment.length > 0) commentLines++;
+                if (strippedComment.length) commentLines++;
             }
             else linesOfCode++;
         }
 
-        return new GeneralData(lines, linesOfCode, commentLines);
+        return new GeneralData(totalLines, linesOfCode, commentLines);
     }
 
     private async _processTypeData(tree: Tree): Promise<TypeData[]> {
@@ -154,27 +116,22 @@ export class JavaAnalyzer extends Analyzer {
     private async _processFunctionWeights(tree: Tree): Promise<FunctionWeightData[]> {
         const functionWeights: FunctionWeightData[] = [];
 
-        const srcLines = tree.rootNode.text.split('\n');
-
         for (const { captures } of this._methodQuery.matches(tree.rootNode)) {
-            const name = captures.find(c => c.name === 'name')?.node.text ?? '';
-            const body = captures.find(c => c.name === 'method')?.node;
-            
-            if (body && name) {
-                const startLine = body.startPosition.row;
-                const endLine = body.endPosition.row;
-                
-                let methodLOC = 0;
-                for (let i = startLine; i <= endLine; i++) {
-                    const line = srcLines[i].trim();
-                    if (line.length
-                        && !line.startsWith('//')
-                        && !line.startsWith('/*')
-                        && !line.startsWith('*')) methodLOC++;
-                }
-                
-                functionWeights.push(new FunctionWeightData(name, methodLOC));
+            const name = captures.find(c => c.name === 'name')!.node.text;
+            const bodyText = captures.find(c => c.name === 'method')!.node.text;
+
+            const srcLines = bodyText.split('\n');
+            let methodLOC = 0;
+
+            for (const line of srcLines) {
+                const trimmedLine = line.trim();
+                if (trimmedLine.length
+                    && !trimmedLine.startsWith('//')
+                    && !trimmedLine.startsWith('/*')
+                    && !trimmedLine.startsWith('*')) methodLOC++;
             }
+
+            functionWeights.push(new FunctionWeightData(name, methodLOC));
         }
 
         return functionWeights;
