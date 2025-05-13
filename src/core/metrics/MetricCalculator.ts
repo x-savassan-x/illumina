@@ -120,8 +120,6 @@ export class WeightedMethodCountMetric extends MetricCalculator {
             const metricNode = node.metricNode;
             const weightData = node.data.filter(d => d instanceof FunctionWeightData);
             metricNode.weightedMethodCount = weightData.reduce((acc, d) => acc + d.weight, 0);
-
-            return true;
         }
         else if (node instanceof FolderNode) {
             for (const child of node.children.values())
